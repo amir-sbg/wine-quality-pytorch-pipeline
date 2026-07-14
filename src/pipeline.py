@@ -39,6 +39,11 @@ def choose_device(requested: str) -> torch.device:
     return torch.device(requested)
 
 
+def status(message: str, quiet: bool) -> None:
+    if not quiet:
+        print(f"[pipeline] {message}")
+
+
 def save_scaler(scaler: StandardScaler, feature_names: list[str], path: Path) -> None:
     payload = {
         "feature_names": feature_names,
@@ -58,12 +63,16 @@ def run(args: argparse.Namespace) -> dict:
     artifact_dir.mkdir(parents=True, exist_ok=True)
     report_dir.mkdir(parents=True, exist_ok=True)
 
+    status(f"Using device: {device}", args.quiet)
+    status("Downloading or reusing the raw dataset", args.quiet)
     download_dataset(raw_path, url=args.url, force=args.force_download)
     raw_frame = load_raw_data(raw_path)
+    status(f"Loaded {len(raw_frame)} rows and {len(FEATURE_COLUMNS)} features", args.quiet)
     cleaned_frame = clean_and_label(
         raw_frame,
         quality_threshold=args.quality_threshold,
     )
+    status(f"Prepared {len(cleaned_frame)} clean rows", args.quiet)
     save_json(
         {
             "raw": summarize_dataset(raw_frame),
@@ -84,6 +93,12 @@ def run(args: argparse.Namespace) -> dict:
         test_size=0.50,
         stratify=holdout_frame["good_quality"],
         random_state=args.seed,
+    )
+    status(
+        "Split data into "
+        f"{len(train_frame)} train / {len(validation_frame)} validation / "
+        f"{len(test_frame)} test rows",
+        args.quiet,
     )
 
     scaler = StandardScaler()
@@ -125,6 +140,10 @@ def run(args: argparse.Namespace) -> dict:
         config=train_config,
         device=device,
     )
+    status(
+        f"Training stopped after {training_summary['epochs_trained']} epochs",
+        args.quiet,
+    )
     pd.DataFrame(history).to_csv(artifact_dir / "training_history.csv", index=False)
     torch.save(
         {
@@ -145,6 +164,13 @@ def run(args: argparse.Namespace) -> dict:
         output_dir=report_dir,
         device=device,
         threshold=args.threshold,
+    )
+    roc_auc = metrics["roc_auc"]
+    roc_auc_text = f"{roc_auc:.3f}" if roc_auc is not None else "n/a"
+    status(
+        f"Test accuracy: {metrics['accuracy']:.3f} | "
+        f"ROC-AUC: {roc_auc_text}",
+        args.quiet,
     )
 
     run_summary = {
@@ -183,6 +209,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="auto")
+    parser.add_argument("--quiet", action="store_true")
     return parser
 
 
