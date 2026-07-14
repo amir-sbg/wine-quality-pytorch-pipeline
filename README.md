@@ -10,6 +10,37 @@ This repository is a practical example of how I structure a small machine-learni
 
 The target is a binary classification task: a red wine is labeled `good_quality` when its original UCI quality score is at least 6. The original `quality` column is retained for analysis but is excluded from the feature matrix, so the model only receives the 11 physicochemical measurements available before the label.
 
+## Technology stack
+
+| Area | Packages and tools | Purpose |
+| --- | --- | --- |
+| Language and runtime | Python 3.11 | Reproducible project environment |
+| Data handling | `pandas`, `NumPy` | CSV ingestion, cleaning, numerical arrays, and summaries |
+| Preprocessing and splitting | `scikit-learn` | `StandardScaler` and stratified train/validation/test splits |
+| Model development | `PyTorch` | Tensor datasets, data loaders, MLP layers, weighted loss, and optimization |
+| Evaluation | `scikit-learn` | Classification metrics, ROC/AUC, average precision, and confusion matrices |
+| Reporting | `Matplotlib` | Learning curves, ROC curves, and confusion-matrix figures |
+| Quality checks | `pytest` and GitHub Actions | Smoke tests, schema tests, and automated CI |
+
+## Data-processing methods
+
+The preprocessing pipeline follows a deliberate order:
+
+1. Download the raw semicolon-delimited CSV and validate the expected feature/target schema.
+2. Replace infinite values, remove incomplete rows, and drop duplicate records.
+3. Derive the binary `good_quality` label from the original quality score.
+4. Split the labeled data with stratification before fitting any transformation.
+5. Fit `StandardScaler` on the training partition only, then apply the learned means and scales to validation and test rows.
+6. Save a data-quality summary, split sizes, and the fitted preprocessing parameters for inspection.
+
+This ordering prevents test-set information from influencing the feature scaling step and makes the transformation reproducible at inference time.
+
+## Modeling and analysis methods
+
+The model is a feed-forward multilayer perceptron implemented directly with `torch.nn`: 11 standardized inputs, two hidden layers, ReLU activations, dropout, and one output logit. Training uses Adam with `BCEWithLogitsLoss` and a positive-class weight calculated from the training partition. Validation-loss early stopping restores the best observed model state.
+
+The evaluation layer reports accuracy, precision, recall, F1, balanced accuracy, Matthews correlation coefficient, ROC-AUC, and average precision. It also saves row-level predictions so false positives and false negatives can be reviewed instead of relying on a single aggregate score.
+
 ## Pipeline
 
 ```mermaid
@@ -56,8 +87,8 @@ The model is intentionally simple. The focus of this repository is the full work
 ## Quick start
 
 ```bash
-git clone https://github.com/amir-sbg/datascience-pipline.git
-cd datascience-pipline
+git clone https://github.com/amir-sbg/wine-quality-pytorch-pipeline.git
+cd wine-quality-pytorch-pipeline
 
 python -m venv .venv
 source .venv/bin/activate       # Windows: .venv\Scripts\activate
