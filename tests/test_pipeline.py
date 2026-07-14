@@ -1,8 +1,10 @@
 import numpy as np
 import pandas as pd
+import pytest
 import torch
 
 from src.data import FEATURE_COLUMNS, clean_and_label, validate_schema
+from src.evaluate import classification_metrics
 from src.model import TabularMLP
 from src.train import TrainConfig, make_loader, train_model
 
@@ -20,6 +22,27 @@ def test_schema_and_target_creation() -> None:
     cleaned = clean_and_label(frame, quality_threshold=6)
     assert "good_quality" in cleaned
     assert set(cleaned["good_quality"]) == {0, 1}
+
+
+def test_cleaning_removes_duplicate_rows() -> None:
+    frame = pd.concat([sample_frame(2), sample_frame(2).iloc[[0]]], ignore_index=True)
+    cleaned = clean_and_label(frame)
+    assert len(cleaned) == 2
+
+
+def test_schema_failure_is_explicit() -> None:
+    frame = sample_frame().drop(columns=["alcohol"])
+    with pytest.raises(ValueError, match="missing expected columns"):
+        validate_schema(frame)
+
+
+def test_metrics_include_balanced_views() -> None:
+    labels = np.array([0, 0, 1, 1])
+    probabilities = np.array([0.05, 0.20, 0.80, 0.95])
+    metrics = classification_metrics(labels, probabilities)
+    assert metrics["accuracy"] == 1.0
+    assert metrics["balanced_accuracy"] == 1.0
+    assert metrics["matthews_correlation"] == 1.0
 
 
 def test_model_returns_one_logit_per_row() -> None:
