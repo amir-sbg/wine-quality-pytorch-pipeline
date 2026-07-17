@@ -7,6 +7,7 @@ from urllib.request import Request, urlopen
 
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import train_test_split
 
 
 DATA_URL = (
@@ -103,6 +104,45 @@ def summarize_dataset(frame: pd.DataFrame) -> dict:
         "target_counts": {str(key): value for key, value in target_counts.items()},
         "feature_summary": numeric_summary,
     }
+
+
+def split_dataset(
+    frame: pd.DataFrame,
+    seed: int,
+    validation_size: float = 0.20,
+    test_size: float = 0.20,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Create deterministic, stratified train, validation, and test frames.
+
+    ``validation_size`` and ``test_size`` are expressed as fractions of the
+    complete input frame. Stratification is performed on the derived binary
+    target so each partition keeps a comparable class balance.
+    """
+    if LABEL_COLUMN not in frame:
+        raise ValueError(f"Dataset must contain the target column: {LABEL_COLUMN}")
+    if not (0 < validation_size < 1 and 0 < test_size < 1):
+        raise ValueError("validation_size and test_size must be between 0 and 1")
+    if validation_size + test_size >= 1:
+        raise ValueError("validation_size and test_size must sum to less than 1")
+
+    holdout_size = validation_size + test_size
+    train_frame, holdout_frame = train_test_split(
+        frame,
+        test_size=holdout_size,
+        stratify=frame[LABEL_COLUMN],
+        random_state=seed,
+    )
+    test_fraction_of_holdout = test_size / holdout_size
+    validation_frame, test_frame = train_test_split(
+        holdout_frame,
+        test_size=test_fraction_of_holdout,
+        stratify=holdout_frame[LABEL_COLUMN],
+        random_state=seed,
+    )
+    return tuple(
+        partition.reset_index(drop=True)
+        for partition in (train_frame, validation_frame, test_frame)
+    )
 
 
 def save_json(value: dict, destination: Path) -> None:

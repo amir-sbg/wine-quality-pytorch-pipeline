@@ -8,7 +8,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 from .data import (
@@ -18,6 +17,7 @@ from .data import (
     download_dataset,
     load_raw_data,
     save_json,
+    split_dataset,
     summarize_dataset,
 )
 from .evaluate import save_evaluation_outputs
@@ -82,17 +82,9 @@ def run(args: argparse.Namespace) -> dict:
         report_dir / "data_quality.json",
     )
 
-    train_frame, holdout_frame = train_test_split(
+    train_frame, validation_frame, test_frame = split_dataset(
         cleaned_frame,
-        test_size=0.40,
-        stratify=cleaned_frame["good_quality"],
-        random_state=args.seed,
-    )
-    validation_frame, test_frame = train_test_split(
-        holdout_frame,
-        test_size=0.50,
-        stratify=holdout_frame["good_quality"],
-        random_state=args.seed,
+        seed=args.seed,
     )
     status(
         "Split data into "
@@ -131,7 +123,13 @@ def run(args: argparse.Namespace) -> dict:
     )
 
     model = TabularMLP(input_dim=len(FEATURE_COLUMNS))
-    train_config = TrainConfig(epochs=args.epochs, batch_size=args.batch_size)
+    train_config = TrainConfig(
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        weight_decay=args.weight_decay,
+        patience=args.patience,
+    )
     model, history, training_summary = train_model(
         model=model,
         train_loader=train_loader,
@@ -207,6 +205,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--threshold", type=float, default=0.5)
     parser.add_argument("--epochs", type=int, default=120)
     parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--learning-rate", type=float, default=1e-3)
+    parser.add_argument("--weight-decay", type=float, default=1e-4)
+    parser.add_argument("--patience", type=int, default=15)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="auto")
     parser.add_argument("--quiet", action="store_true")

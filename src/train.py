@@ -17,6 +17,18 @@ class TrainConfig:
     weight_decay: float = 1e-4
     patience: int = 15
 
+    def __post_init__(self) -> None:
+        if self.epochs < 1:
+            raise ValueError("epochs must be at least 1")
+        if self.batch_size < 1:
+            raise ValueError("batch_size must be at least 1")
+        if self.learning_rate <= 0:
+            raise ValueError("learning_rate must be greater than 0")
+        if self.weight_decay < 0:
+            raise ValueError("weight_decay must not be negative")
+        if self.patience < 1:
+            raise ValueError("patience must be at least 1")
+
 
 def make_loader(
     features: np.ndarray,
@@ -117,6 +129,10 @@ def train_model(
         "epochs_requested": config.epochs,
         "epochs_trained": len(history),
         "best_validation_loss": best_validation_loss,
+        "batch_size": config.batch_size,
+        "learning_rate": config.learning_rate,
+        "weight_decay": config.weight_decay,
+        "patience": config.patience,
         "positive_weight": positive_weight,
     }
     return model, history, summary

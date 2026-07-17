@@ -29,7 +29,7 @@ The preprocessing pipeline follows a deliberate order:
 1. Download the raw semicolon-delimited CSV and validate the expected feature/target schema.
 2. Replace infinite values, remove incomplete rows, and drop duplicate records.
 3. Derive the binary `good_quality` label from the original quality score.
-4. Split the labeled data with stratification before fitting any transformation.
+4. Split the labeled data with a reusable, deterministic stratification helper before fitting any transformation.
 5. Fit `StandardScaler` on the training partition only, then apply the learned means and scales to validation and test rows.
 6. Save a data-quality summary, split sizes, and the fitted preprocessing parameters for inspection.
 
@@ -108,10 +108,17 @@ Useful options:
 python -m src.pipeline \
   --epochs 120 \
   --batch-size 64 \
+  --learning-rate 0.001 \
+  --weight-decay 0.0001 \
+  --patience 15 \
   --quality-threshold 6 \
   --seed 42 \
   --device auto
 ```
+
+Training controls are recorded in `artifacts/run_config.json` and
+`reports/run_summary.json`, making it possible to reproduce a run and compare
+experiments without changing source code.
 
 The first run downloads the dataset to `data/raw/`. Generated files are written to `artifacts/` and `reports/`.
 
@@ -145,7 +152,7 @@ reports/
 - Stratification preserves the target balance across partitions.
 - The best validation checkpoint is restored after early stopping.
 - The saved checkpoint includes feature names, thresholds, and training metadata.
-- Tests cover schema validation, target creation, model output shape, and a short training smoke test.
+- Tests cover schema validation, target creation, deterministic stratified splitting, model output shape, configuration validation, metrics, and a short training smoke test.
 - A GitHub Actions workflow runs the test suite on pushes and pull requests.
 
 ## Project structure

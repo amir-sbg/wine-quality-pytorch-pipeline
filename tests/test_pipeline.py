@@ -3,7 +3,12 @@ import pandas as pd
 import pytest
 import torch
 
-from src.data import FEATURE_COLUMNS, clean_and_label, validate_schema
+from src.data import (
+    FEATURE_COLUMNS,
+    clean_and_label,
+    split_dataset,
+    validate_schema,
+)
 from src.evaluate import classification_metrics
 from src.model import TabularMLP
 from src.train import TrainConfig, make_loader, train_model
@@ -34,6 +39,25 @@ def test_schema_failure_is_explicit() -> None:
     frame = sample_frame().drop(columns=["alcohol"])
     with pytest.raises(ValueError, match="missing expected columns"):
         validate_schema(frame)
+
+
+def test_split_dataset_is_stratified_and_reproducible() -> None:
+    frame = sample_frame(40)
+    frame.loc[:, FEATURE_COLUMNS[0]] = np.arange(len(frame))
+    cleaned = clean_and_label(frame)
+
+    first_split = split_dataset(cleaned, seed=19)
+    second_split = split_dataset(cleaned, seed=19)
+
+    assert [len(partition) for partition in first_split] == [24, 8, 8]
+    for first, second in zip(first_split, second_split):
+        pd.testing.assert_frame_equal(first, second)
+        assert first["good_quality"].mean() == 0.5
+
+
+def test_train_config_rejects_invalid_values() -> None:
+    with pytest.raises(ValueError, match="learning_rate"):
+        TrainConfig(learning_rate=0)
 
 
 def test_metrics_include_balanced_views() -> None:
