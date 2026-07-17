@@ -1,50 +1,27 @@
 # Wine Quality Modeling Pipeline
 
-An end-to-end PyTorch pipeline for predicting whether a red wine has a quality score of at least 6 from its physicochemical measurements. The project covers ingestion, validation, data preparation, model training, evaluation, and error analysis on the UCI Wine Quality dataset.
+PyTorch classification pipeline for estimating whether a red wine has a UCI quality score of 6 or higher from its physicochemical measurements.
 
-## Overview
+## Project summary
 
-The raw UCI CSV is validated and cleaned before the target is created. Data is split with stratification, and the feature scaler is fitted on training rows only. A compact tabular multilayer perceptron is then trained with class-weighted binary cross-entropy and early stopping. Each run stores the preprocessing parameters, model checkpoint, metrics, plots, and row-level test predictions.
+The pipeline downloads the UCI red-wine dataset, checks its schema, cleans the records, creates a binary target, and produces stratified train, validation, and test sets. Standardization is fitted on the training data only. The trained model and evaluation artifacts are saved locally so a run can be inspected or repeated without rebuilding the workflow.
 
-## Pipeline
+The original `quality` score is used to create `good_quality`, but it is not passed to the model. This keeps the target separate from the 11 input features.
 
-```mermaid
-flowchart LR
-    A["UCI red-wine CSV"] --> B["Validate and clean"]
-    B --> C["Create binary target"]
-    C --> D["Stratified 60 / 20 / 20 split"]
-    D --> E["StandardScaler fitted on train"]
-    E --> F["PyTorch MLP"]
-    F --> G["Metrics and error analysis"]
-```
+## Approach
 
-### Data preparation
+1. Validate the expected numeric columns in the semicolon-delimited CSV.
+2. Remove non-finite, incomplete, and duplicate records.
+3. Create `good_quality` using `quality >= 6`.
+4. Make deterministic stratified 60/20/20 train, validation, and test splits.
+5. Fit `StandardScaler` on the training partition and apply it to the other partitions.
+6. Train and evaluate the PyTorch model.
 
-- Parses the semicolon-delimited UCI file and checks the expected numeric schema.
-- Replaces non-finite values, removes incomplete rows, and drops duplicates.
-- Creates `good_quality` from `quality >= 6`; the original score is kept for analysis but excluded from model inputs.
-- Uses deterministic stratified partitions to preserve the target distribution.
-- Fits `StandardScaler` on the training partition and applies it unchanged to validation and test data.
-
-### Model and training
-
-`src/model.py` defines a feed-forward `TabularMLP` with 11 inputs, hidden layers of 64 and 32 units, ReLU activations, dropout, and one output logit. Training uses Adam, `BCEWithLogitsLoss`, a positive-class weight derived from the training data, and validation-loss early stopping. The best validation checkpoint is restored before test evaluation.
+The model is a small `TabularMLP` with 11 inputs, hidden layers of 64 and 32 units, ReLU activations, dropout, and one output logit. Training uses Adam, class-weighted `BCEWithLogitsLoss`, and early stopping based on validation loss. Evaluation includes accuracy, precision, recall, F1, balanced accuracy, Matthews correlation coefficient, ROC-AUC, and average precision.
 
 ## Technology
 
-| Component | Use |
-| --- | --- |
-| Python | Project runtime |
-| pandas and NumPy | Tabular data loading, cleaning, and numerical operations |
-| scikit-learn | Stratified splitting, standardization, and evaluation metrics |
-| PyTorch | Model definition, tensor datasets, optimization, and training |
-| Matplotlib | Learning curves, ROC curve, and confusion matrix |
-| pytest | Unit and training smoke tests |
-| GitHub Actions | Automated test execution |
-
-## Evaluation
-
-The test report includes accuracy, precision, recall, F1, balanced accuracy, Matthews correlation coefficient, ROC-AUC, and average precision. `test_predictions.csv` contains predicted probabilities, hard predictions, the original test rows, and a correctness flag for reviewing false positives and false negatives.
+Python, pandas, NumPy, scikit-learn, PyTorch, Matplotlib, pytest, and GitHub Actions.
 
 ## Quick start
 
@@ -56,29 +33,22 @@ python -m venv .venv
 source .venv/bin/activate       # Windows: .venv\Scripts\activate
 python -m pip install -r requirements.txt
 python -m pytest -q
-```
-
-Run the pipeline:
-
-```bash
 python -m src.pipeline
 ```
 
-Training settings can be changed from the command line:
+The dataset is downloaded to `data/raw/` on the first run. Model files are written to `artifacts/`, and metrics, plots, and test predictions are written to `reports/`.
+
+Training settings are configurable, for example:
 
 ```bash
 python -m src.pipeline \
   --epochs 120 \
   --batch-size 64 \
   --learning-rate 0.001 \
-  --weight-decay 0.0001 \
-  --patience 15 \
   --quality-threshold 6 \
   --seed 42 \
   --device auto
 ```
-
-The first run downloads the dataset to `data/raw/`. Model artifacts and reports are written to `artifacts/` and `reports/`.
 
 ## Outputs
 
@@ -99,23 +69,24 @@ reports/
 └── roc_curve.png
 ```
 
+`test_predictions.csv` includes the test rows, predicted probabilities, class predictions, and a correctness flag for reviewing errors.
+
 ## Project structure
 
 ```text
 .
-├── .github/workflows/ci.yml
 ├── src/
-│   ├── data.py          # download, validation, cleaning, profiling
-│   ├── model.py         # PyTorch tabular MLP
-│   ├── train.py         # loaders, weighted loss, early stopping
+│   ├── data.py          # loading, validation, cleaning, and profiling
+│   ├── model.py         # PyTorch tabular model
+│   ├── train.py         # data loaders, loss, and early stopping
 │   ├── evaluate.py      # metrics, plots, and predictions
-│   └── pipeline.py      # command-line orchestration
+│   └── pipeline.py      # command-line workflow
 ├── tests/
 │   └── test_pipeline.py
+├── .github/workflows/ci.yml
 ├── Makefile
 ├── pyproject.toml
-├── requirements.txt
-└── README.md
+└── requirements.txt
 ```
 
-The dataset is small and the quality threshold is a modeling decision. The saved artifacts and test predictions make those choices visible and provide a basis for comparing alternative thresholds, models, or calibration methods.
+The dataset is small, and the quality threshold is an explicit modeling choice. The saved reports make the split, preprocessing, training settings, and test errors available for comparison.
