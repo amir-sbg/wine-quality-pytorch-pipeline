@@ -1,7 +1,5 @@
 # Wine Quality Modeling Pipeline
 
-**Recommended repository name:** `wine-quality-pytorch-pipeline`
-
 **About:** A reproducible, end-to-end data science pipeline that takes the public UCI Wine Quality dataset from raw CSV ingestion through preprocessing, PyTorch model training, evaluation, and error analysis.
 
 ## Overview
