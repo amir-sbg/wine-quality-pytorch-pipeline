@@ -1,88 +1,50 @@
 # Wine Quality Modeling Pipeline
 
-**Recommended repository name:** `wine-quality-pytorch-pipeline`
-
-**About:** A reproducible, end-to-end data science pipeline that takes the public UCI Wine Quality dataset from raw CSV ingestion through preprocessing, PyTorch model training, evaluation, and error analysis.
+An end-to-end PyTorch pipeline for predicting whether a red wine has a quality score of at least 6 from its physicochemical measurements. The project covers ingestion, validation, data preparation, model training, evaluation, and error analysis on the UCI Wine Quality dataset.
 
 ## Overview
 
-This repository is a practical example of how I structure a small machine-learning project from zero to a usable result. It starts with a public dataset, validates the incoming schema, profiles data quality, creates a documented target, splits data without leakage, fits preprocessing on the training set only, trains a PyTorch multilayer perceptron, and saves evaluation artifacts that make the result inspectable.
-
-The target is a binary classification task: a red wine is labeled `good_quality` when its original UCI quality score is at least 6. The original `quality` column is retained for analysis but is excluded from the feature matrix, so the model only receives the 11 physicochemical measurements available before the label.
-
-## Technology stack
-
-| Area | Packages and tools | Purpose |
-| --- | --- | --- |
-| Language and runtime | Python 3.11 | Reproducible project environment |
-| Data handling | `pandas`, `NumPy` | CSV ingestion, cleaning, numerical arrays, and summaries |
-| Preprocessing and splitting | `scikit-learn` | `StandardScaler` and stratified train/validation/test splits |
-| Model development | `PyTorch` | Tensor datasets, data loaders, MLP layers, weighted loss, and optimization |
-| Evaluation | `scikit-learn` | Classification metrics, ROC/AUC, average precision, and confusion matrices |
-| Reporting | `Matplotlib` | Learning curves, ROC curves, and confusion-matrix figures |
-| Quality checks | `pytest` and GitHub Actions | Smoke tests, schema tests, and automated CI |
-
-## Data-processing methods
-
-The preprocessing pipeline follows a deliberate order:
-
-1. Download the raw semicolon-delimited CSV and validate the expected feature/target schema.
-2. Replace infinite values, remove incomplete rows, and drop duplicate records.
-3. Derive the binary `good_quality` label from the original quality score.
-4. Split the labeled data with a reusable, deterministic stratification helper before fitting any transformation.
-5. Fit `StandardScaler` on the training partition only, then apply the learned means and scales to validation and test rows.
-6. Save a data-quality summary, split sizes, and the fitted preprocessing parameters for inspection.
-
-This ordering prevents test-set information from influencing the feature scaling step and makes the transformation reproducible at inference time.
-
-## Modeling and analysis methods
-
-The model is a feed-forward multilayer perceptron implemented directly with `torch.nn`: 11 standardized inputs, two hidden layers, ReLU activations, dropout, and one output logit. Training uses Adam with `BCEWithLogitsLoss` and a positive-class weight calculated from the training partition. Validation-loss early stopping restores the best observed model state.
-
-The evaluation layer reports accuracy, precision, recall, F1, balanced accuracy, Matthews correlation coefficient, ROC-AUC, and average precision. It also saves row-level predictions so false positives and false negatives can be reviewed instead of relying on a single aggregate score.
+The raw UCI CSV is validated and cleaned before the target is created. Data is split with stratification, and the feature scaler is fitted on training rows only. A compact tabular multilayer perceptron is then trained with class-weighted binary cross-entropy and early stopping. Each run stores the preprocessing parameters, model checkpoint, metrics, plots, and row-level test predictions.
 
 ## Pipeline
 
 ```mermaid
 flowchart LR
-    A["UCI CSV"] --> B["Schema validation<br/>numeric columns and expected fields"]
-    B --> C["Data quality profile<br/>missing values and duplicates"]
-    C --> D["Clean + label<br/>quality ≥ 6"]
-    D --> E["Stratified split<br/>60% train · 20% validation · 20% test"]
-    E --> F["StandardScaler<br/>fit on train only"]
-    F --> G["PyTorch MLP<br/>64 → 32 → 1"]
-    G --> H["Early stopping<br/>weighted BCE"]
-    H --> I["Metrics + analysis<br/>ROC · confusion matrix · errors"]
+    A["UCI red-wine CSV"] --> B["Validate and clean"]
+    B --> C["Create binary target"]
+    C --> D["Stratified 60 / 20 / 20 split"]
+    D --> E["StandardScaler fitted on train"]
+    E --> F["PyTorch MLP"]
+    F --> G["Metrics and error analysis"]
 ```
 
-## Dataset
+### Data preparation
 
-The project uses the public [UCI Wine Quality dataset](https://archive.ics.uci.edu/dataset/186/wine+quality), specifically the red-wine CSV. It contains 1,599 rows, 11 numeric input features, and an integer quality score.
+- Parses the semicolon-delimited UCI file and checks the expected numeric schema.
+- Replaces non-finite values, removes incomplete rows, and drops duplicates.
+- Creates `good_quality` from `quality >= 6`; the original score is kept for analysis but excluded from model inputs.
+- Uses deterministic stratified partitions to preserve the target distribution.
+- Fits `StandardScaler` on the training partition and applies it unchanged to validation and test data.
 
-The pipeline records the following decisions in code:
+### Model and training
 
-- semicolon-delimited CSV parsing
-- replacement of infinite values and removal of incomplete rows
-- duplicate removal before splitting
-- binary target creation with `quality >= 6`
-- stratified 60/20/20 train, validation, and test partitions
-- standardization fitted only on the training partition
-- class-weighted binary cross-entropy for the PyTorch model
+`src/model.py` defines a feed-forward `TabularMLP` with 11 inputs, hidden layers of 64 and 32 units, ReLU activations, dropout, and one output logit. Training uses Adam, `BCEWithLogitsLoss`, a positive-class weight derived from the training data, and validation-loss early stopping. The best validation checkpoint is restored before test evaluation.
 
-The dataset is small enough for a fast local run while still exposing the decisions that matter in larger production pipelines: schema drift, class balance, data leakage, reproducibility, and error inspection.
+## Technology
 
-## Model
+| Component | Use |
+| --- | --- |
+| Python | Project runtime |
+| pandas and NumPy | Tabular data loading, cleaning, and numerical operations |
+| scikit-learn | Stratified splitting, standardization, and evaluation metrics |
+| PyTorch | Model definition, tensor datasets, optimization, and training |
+| Matplotlib | Learning curves, ROC curve, and confusion matrix |
+| pytest | Unit and training smoke tests |
+| GitHub Actions | Automated test execution |
 
-`src/model.py` implements a compact `TabularMLP` with:
+## Evaluation
 
-- 11 standardized input features
-- fully connected layers of 64 and 32 units
-- ReLU activations and dropout
-- one output logit for binary classification
-- `BCEWithLogitsLoss` with a training-set-derived positive-class weight
-- Adam optimization and validation-loss early stopping
-
-The model is intentionally simple. The focus of this repository is the full workflow around model development and analysis rather than claiming state-of-the-art performance on a small dataset.
+The test report includes accuracy, precision, recall, F1, balanced accuracy, Matthews correlation coefficient, ROC-AUC, and average precision. `test_predictions.csv` contains predicted probabilities, hard predictions, the original test rows, and a correctness flag for reviewing false positives and false negatives.
 
 ## Quick start
 
@@ -96,13 +58,13 @@ python -m pip install -r requirements.txt
 python -m pytest -q
 ```
 
-Run the complete pipeline:
+Run the pipeline:
 
 ```bash
 python -m src.pipeline
 ```
 
-Useful options:
+Training settings can be changed from the command line:
 
 ```bash
 python -m src.pipeline \
@@ -116,20 +78,14 @@ python -m src.pipeline \
   --device auto
 ```
 
-Training controls are recorded in `artifacts/run_config.json` and
-`reports/run_summary.json`, making it possible to reproduce a run and compare
-experiments without changing source code.
-
-The first run downloads the dataset to `data/raw/`. Generated files are written to `artifacts/` and `reports/`.
+The first run downloads the dataset to `data/raw/`. Model artifacts and reports are written to `artifacts/` and `reports/`.
 
 ## Outputs
 
-The run creates:
-
 ```text
 artifacts/
-├── model.pt              # model weights and training metadata
-├── scaler.json           # train-fitted means and scales
+├── model.pt
+├── scaler.json
 ├── training_history.csv
 └── run_config.json
 
@@ -143,18 +99,6 @@ reports/
 └── roc_curve.png
 ```
 
-`test_predictions.csv` is the main error-analysis entry point. It contains the original test rows, predicted probabilities, hard predictions, and a `correct` flag so false positives and false negatives can be inspected directly.
-
-## Reproducibility and engineering choices
-
-- `--seed` controls Python, NumPy, PyTorch, and CUDA random seeds.
-- The scaler is fitted after the split and only on training rows.
-- Stratification preserves the target balance across partitions.
-- The best validation checkpoint is restored after early stopping.
-- The saved checkpoint includes feature names, thresholds, and training metadata.
-- Tests cover schema validation, target creation, deterministic stratified splitting, model output shape, configuration validation, metrics, and a short training smoke test.
-- A GitHub Actions workflow runs the test suite on pushes and pull requests.
-
 ## Project structure
 
 ```text
@@ -164,7 +108,7 @@ reports/
 │   ├── data.py          # download, validation, cleaning, profiling
 │   ├── model.py         # PyTorch tabular MLP
 │   ├── train.py         # loaders, weighted loss, early stopping
-│   ├── evaluate.py      # metrics, plots, predictions, error analysis
+│   ├── evaluate.py      # metrics, plots, and predictions
 │   └── pipeline.py      # command-line orchestration
 ├── tests/
 │   └── test_pipeline.py
@@ -174,6 +118,4 @@ reports/
 └── README.md
 ```
 
-## Limitations and next steps
-
-This is a portfolio-scale example, not a production or scientific benchmark. The dataset is small, the label threshold is a modeling choice, and the features do not represent every factor that affects wine quality. A stronger follow-up would compare calibrated models, add cross-validation, track experiments, and package the trained model behind a typed inference API.
+The dataset is small and the quality threshold is a modeling decision. The saved artifacts and test predictions make those choices visible and provide a basis for comparing alternative thresholds, models, or calibration methods.
