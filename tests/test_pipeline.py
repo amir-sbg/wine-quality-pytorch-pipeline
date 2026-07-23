@@ -69,6 +69,15 @@ def test_metrics_include_balanced_views() -> None:
     assert metrics["matthews_correlation"] == 1.0
 
 
+def test_metrics_reject_invalid_threshold() -> None:
+    with pytest.raises(ValueError, match="threshold"):
+        classification_metrics(
+            np.array([0, 1]),
+            np.array([0.2, 0.8]),
+            threshold=1.5,
+        )
+
+
 def test_model_returns_one_logit_per_row() -> None:
     model = TabularMLP(input_dim=len(FEATURE_COLUMNS))
     output = model(torch.zeros(5, len(FEATURE_COLUMNS)))

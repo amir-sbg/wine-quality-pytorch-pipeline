@@ -41,6 +41,14 @@ def classification_metrics(
     probabilities: np.ndarray,
     threshold: float = 0.5,
 ) -> dict[str, float | int | None]:
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError("threshold must be between 0 and 1")
+    labels = np.asarray(labels)
+    probabilities = np.asarray(probabilities)
+    if labels.ndim != 1 or probabilities.ndim != 1:
+        raise ValueError("labels and probabilities must be one-dimensional")
+    if labels.shape != probabilities.shape:
+        raise ValueError("labels and probabilities must have the same shape")
     predictions = (probabilities >= threshold).astype(int)
     metrics: dict[str, float | int | None] = {
         "n_samples": int(len(labels)),
