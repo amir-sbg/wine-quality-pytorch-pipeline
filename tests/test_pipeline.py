@@ -102,3 +102,4 @@ def test_training_smoke() -> None:
     assert trained is model
     assert len(history) == 2
     assert summary["epochs_trained"] == 2
+    assert summary["best_epoch"] >= 1

@@ -96,6 +96,7 @@ def train_model(
 
     best_state = copy.deepcopy(model.state_dict())
     best_validation_loss = float("inf")
+    best_epoch = 0
     epochs_without_improvement = 0
     history: list[dict[str, float]] = []
 
@@ -116,6 +117,7 @@ def train_model(
 
         if validation_loss < best_validation_loss - 1e-5:
             best_validation_loss = validation_loss
+            best_epoch = epoch
             best_state = copy.deepcopy(model.state_dict())
             epochs_without_improvement = 0
         else:
@@ -128,6 +130,7 @@ def train_model(
     summary = {
         "epochs_requested": config.epochs,
         "epochs_trained": len(history),
+        "best_epoch": best_epoch,
         "best_validation_loss": best_validation_loss,
         "batch_size": config.batch_size,
         "learning_rate": config.learning_rate,
