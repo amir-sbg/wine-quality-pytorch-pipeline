@@ -25,6 +25,9 @@ from sklearn.metrics import (
 from torch import nn
 
 
+THRESHOLD_METRICS = {"f1", "balanced_accuracy", "matthews_correlation"}
+
+
 def predict_probabilities(
     model: nn.Module,
     features: np.ndarray,
@@ -49,6 +52,8 @@ def classification_metrics(
         raise ValueError("labels and probabilities must be one-dimensional")
     if labels.shape != probabilities.shape:
         raise ValueError("labels and probabilities must have the same shape")
+    if len(labels) == 0:
+        raise ValueError("labels and probabilities must not be empty")
     predictions = (probabilities >= threshold).astype(int)
     metrics: dict[str, float | int | None] = {
         "n_samples": int(len(labels)),
@@ -77,8 +82,50 @@ def classification_metrics(
     return metrics
 
 
+def threshold_search(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    metric: str = "f1",
+    steps: int = 181,
+) -> dict[str, float | str | list[dict[str, float]]]:
+    if metric not in THRESHOLD_METRICS:
+        raise ValueError(f"metric must be one of {sorted(THRESHOLD_METRICS)}")
+    if steps < 2:
+        raise ValueError("steps must be at least 2")
+
+    rows = []
+    for threshold in np.linspace(0.05, 0.95, steps):
+        score = classification_metrics(labels, probabilities, float(threshold))[metric]
+        rows.append({"threshold": float(threshold), "score": float(score)})
+
+    best = max(rows, key=lambda row: (row["score"], -abs(row["threshold"] - 0.5)))
+    return {
+        "metric": metric,
+        "best_threshold": best["threshold"],
+        "best_score": best["score"],
+        "thresholds": rows,
+    }
+
+
 def _save_json(value: dict, path: Path) -> None:
     path.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n")
+
+
+def save_threshold_curve(
+    threshold_rows: list[dict[str, float]],
+    metric: str,
+    path: Path,
+) -> None:
+    frame = pd.DataFrame(threshold_rows)
+    figure, axis = plt.subplots(figsize=(6, 4))
+    axis.plot(frame["threshold"], frame["score"])
+    axis.set_title("Validation threshold search")
+    axis.set_xlabel("Classification threshold")
+    axis.set_ylabel(metric.replace("_", " "))
+    figure.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(path, dpi=160)
+    plt.close(figure)
 
 
 def save_evaluation_outputs(

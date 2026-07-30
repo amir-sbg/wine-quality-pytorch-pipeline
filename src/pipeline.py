@@ -20,7 +20,12 @@ from .data import (
     split_dataset,
     summarize_dataset,
 )
-from .evaluate import save_evaluation_outputs
+from .evaluate import (
+    predict_probabilities,
+    save_evaluation_outputs,
+    save_threshold_curve,
+    threshold_search,
+)
 from .model import TabularMLP
 from .train import TrainConfig, make_loader, train_model
 
@@ -129,6 +134,7 @@ def run(args: argparse.Namespace) -> dict:
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
         patience=args.patience,
+        gradient_clip=args.gradient_clip,
     )
     model, history, training_summary = train_model(
         model=model,
@@ -142,13 +148,40 @@ def run(args: argparse.Namespace) -> dict:
         f"Training stopped after {training_summary['epochs_trained']} epochs",
         args.quiet,
     )
+
+    selected_threshold = args.threshold
+    threshold_report = None
+    if args.tune_threshold:
+        validation_probabilities = predict_probabilities(
+            model,
+            validation_features,
+            device,
+        )
+        threshold_report = threshold_search(
+            validation_labels.astype(int),
+            validation_probabilities,
+            metric=args.threshold_metric,
+        )
+        selected_threshold = float(threshold_report["best_threshold"])
+        save_json(threshold_report, report_dir / "threshold_search.json")
+        save_threshold_curve(
+            threshold_report["thresholds"],
+            args.threshold_metric,
+            report_dir / "threshold_curve.png",
+        )
+        status(
+            f"Selected threshold {selected_threshold:.3f} "
+            f"by validation {args.threshold_metric}",
+            args.quiet,
+        )
+
     pd.DataFrame(history).to_csv(artifact_dir / "training_history.csv", index=False)
     torch.save(
         {
             "model_state_dict": model.state_dict(),
             "feature_names": FEATURE_COLUMNS,
             "quality_threshold": args.quality_threshold,
-            "classification_threshold": args.threshold,
+            "classification_threshold": selected_threshold,
             "training_summary": training_summary,
         },
         artifact_dir / "model.pt",
@@ -161,7 +194,7 @@ def run(args: argparse.Namespace) -> dict:
         history=history,
         output_dir=report_dir,
         device=device,
-        threshold=args.threshold,
+        threshold=selected_threshold,
     )
     roc_auc = metrics["roc_auc"]
     roc_auc_text = f"{roc_auc:.3f}" if roc_auc is not None else "n/a"
@@ -182,6 +215,9 @@ def run(args: argparse.Namespace) -> dict:
         },
         "feature_count": len(FEATURE_COLUMNS),
         "quality_threshold": args.quality_threshold,
+        "requested_threshold": args.threshold,
+        "selected_threshold": selected_threshold,
+        "threshold_tuning": threshold_report,
         "training": training_summary,
         "test_metrics": metrics,
     }
@@ -208,8 +244,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--patience", type=int, default=15)
+    parser.add_argument("--gradient-clip", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="auto")
+    parser.add_argument("--tune-threshold", action="store_true")
+    parser.add_argument(
+        "--threshold-metric",
+        choices=["f1", "balanced_accuracy", "matthews_correlation"],
+        default="f1",
+    )
     parser.add_argument("--quiet", action="store_true")
     return parser
 

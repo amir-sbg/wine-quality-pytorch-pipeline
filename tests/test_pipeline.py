@@ -9,7 +9,7 @@ from src.data import (
     split_dataset,
     validate_schema,
 )
-from src.evaluate import classification_metrics
+from src.evaluate import classification_metrics, threshold_search
 from src.model import TabularMLP
 from src.train import TrainConfig, make_loader, train_model
 
@@ -58,6 +58,8 @@ def test_split_dataset_is_stratified_and_reproducible() -> None:
 def test_train_config_rejects_invalid_values() -> None:
     with pytest.raises(ValueError, match="learning_rate"):
         TrainConfig(learning_rate=0)
+    with pytest.raises(ValueError, match="gradient_clip"):
+        TrainConfig(gradient_clip=0)
 
 
 def test_metrics_include_balanced_views() -> None:
@@ -76,6 +78,21 @@ def test_metrics_reject_invalid_threshold() -> None:
             np.array([0.2, 0.8]),
             threshold=1.5,
         )
+
+
+def test_metrics_reject_empty_inputs() -> None:
+    with pytest.raises(ValueError, match="must not be empty"):
+        classification_metrics(np.array([]), np.array([]))
+
+
+def test_threshold_search_selects_validation_cutoff() -> None:
+    labels = np.array([0, 0, 1, 1])
+    probabilities = np.array([0.10, 0.40, 0.60, 0.90])
+    result = threshold_search(labels, probabilities, metric="f1", steps=19)
+
+    assert result["metric"] == "f1"
+    assert 0.40 < result["best_threshold"] <= 0.60
+    assert result["best_score"] == 1.0
 
 
 def test_model_returns_one_logit_per_row() -> None:

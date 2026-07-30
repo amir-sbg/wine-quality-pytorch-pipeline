@@ -16,6 +16,7 @@ class TrainConfig:
     learning_rate: float = 1e-3
     weight_decay: float = 1e-4
     patience: int = 15
+    gradient_clip: float | None = 1.0
 
     def __post_init__(self) -> None:
         if self.epochs < 1:
@@ -28,6 +29,8 @@ class TrainConfig:
             raise ValueError("weight_decay must not be negative")
         if self.patience < 1:
             raise ValueError("patience must be at least 1")
+        if self.gradient_clip is not None and self.gradient_clip <= 0:
+            raise ValueError("gradient_clip must be positive or None")
 
 
 def make_loader(
@@ -49,6 +52,7 @@ def _run_epoch(
     loss_fn: nn.Module,
     optimizer: torch.optim.Optimizer | None,
     device: torch.device,
+    gradient_clip: float | None = None,
 ) -> float:
     training = optimizer is not None
     model.train(training)
@@ -67,6 +71,8 @@ def _run_epoch(
 
         if training:
             loss.backward()
+            if gradient_clip is not None:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
             optimizer.step()
 
         total_loss += loss.item() * len(labels)
@@ -102,7 +108,12 @@ def train_model(
 
     for epoch in range(1, config.epochs + 1):
         train_loss = _run_epoch(
-            model, train_loader, loss_fn, optimizer=optimizer, device=device
+            model,
+            train_loader,
+            loss_fn,
+            optimizer=optimizer,
+            device=device,
+            gradient_clip=config.gradient_clip,
         )
         validation_loss = _run_epoch(
             model, validation_loader, loss_fn, optimizer=None, device=device
@@ -136,6 +147,7 @@ def train_model(
         "learning_rate": config.learning_rate,
         "weight_decay": config.weight_decay,
         "patience": config.patience,
+        "gradient_clip": config.gradient_clip,
         "positive_weight": positive_weight,
     }
     return model, history, summary
