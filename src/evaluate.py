@@ -14,6 +14,7 @@ from sklearn.metrics import (
     ConfusionMatrixDisplay,
     average_precision_score,
     balanced_accuracy_score,
+    brier_score_loss,
     confusion_matrix,
     f1_score,
     matthews_corrcoef,
@@ -54,6 +55,10 @@ def classification_metrics(
         raise ValueError("labels and probabilities must have the same shape")
     if len(labels) == 0:
         raise ValueError("labels and probabilities must not be empty")
+    if not np.isfinite(probabilities).all():
+        raise ValueError("probabilities must be finite")
+    if (probabilities < 0).any() or (probabilities > 1).any():
+        raise ValueError("probabilities must be between 0 and 1")
     predictions = (probabilities >= threshold).astype(int)
     metrics: dict[str, float | int | None] = {
         "n_samples": int(len(labels)),
@@ -69,6 +74,7 @@ def classification_metrics(
         "matthews_correlation": float(
             matthews_corrcoef(labels, predictions)
         ),
+        "brier_score": float(brier_score_loss(labels, probabilities)),
     }
 
     if len(np.unique(labels)) == 2:
@@ -80,6 +86,50 @@ def classification_metrics(
         metrics["roc_auc"] = None
         metrics["average_precision"] = None
     return metrics
+
+
+def calibration_table(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    bins: int = 10,
+) -> dict[str, float | int | list[dict[str, float | int]]]:
+    if bins < 2:
+        raise ValueError("bins must be at least 2")
+    labels = np.asarray(labels)
+    probabilities = np.asarray(probabilities)
+    classification_metrics(labels, probabilities)
+
+    edges = np.linspace(0.0, 1.0, bins + 1)
+    assignments = np.minimum(np.digitize(probabilities, edges[1:-1]), bins - 1)
+    rows = []
+    expected_calibration_error = 0.0
+    for index in range(bins):
+        mask = assignments == index
+        count = int(mask.sum())
+        if count == 0:
+            continue
+        mean_probability = float(probabilities[mask].mean())
+        observed_rate = float(labels[mask].mean())
+        error = observed_rate - mean_probability
+        expected_calibration_error += count / len(labels) * abs(error)
+        rows.append(
+            {
+                "bin": index,
+                "lower": float(edges[index]),
+                "upper": float(edges[index + 1]),
+                "count": count,
+                "mean_probability": mean_probability,
+                "observed_positive_rate": observed_rate,
+                "calibration_error": error,
+            }
+        )
+    return {
+        "bins": bins,
+        "n_samples": int(len(labels)),
+        "brier_score": float(brier_score_loss(labels, probabilities)),
+        "expected_calibration_error": float(expected_calibration_error),
+        "table": rows,
+    }
 
 
 def threshold_search(
@@ -142,7 +192,9 @@ def save_evaluation_outputs(
     probabilities = predict_probabilities(model, test_features, device)
     predictions = (probabilities >= threshold).astype(int)
     metrics = classification_metrics(labels, probabilities, threshold)
+    calibration = calibration_table(labels, probabilities)
     _save_json(metrics, output_dir / "metrics.json")
+    _save_json(calibration, output_dir / "calibration.json")
 
     predictions_frame = test_frame.reset_index(drop=True).copy()
     predictions_frame["prediction_probability"] = probabilities
@@ -154,6 +206,7 @@ def save_evaluation_outputs(
 
     _plot_learning_curve(history, output_dir / "learning_curve.png")
     _plot_confusion_matrix(labels, predictions, output_dir / "confusion_matrix.png")
+    _plot_calibration(calibration, output_dir / "calibration_curve.png")
     if len(np.unique(labels)) == 2:
         _plot_roc_curve(labels, probabilities, output_dir / "roc_curve.png")
     return metrics
@@ -202,6 +255,29 @@ def _plot_roc_curve(labels: np.ndarray, probabilities: np.ndarray, path: Path) -
     axis.set_title("Test ROC curve")
     axis.set_xlabel("False positive rate")
     axis.set_ylabel("True positive rate")
+    axis.legend()
+    figure.tight_layout()
+    figure.savefig(path, dpi=160)
+    plt.close(figure)
+
+
+def _plot_calibration(calibration: dict, path: Path) -> None:
+    table = calibration["table"]
+    figure, axis = plt.subplots(figsize=(5, 5))
+    axis.plot([0, 1], [0, 1], "--", color="gray", label="ideal")
+    if table:
+        frame = pd.DataFrame(table)
+        axis.plot(
+            frame["mean_probability"],
+            frame["observed_positive_rate"],
+            marker="o",
+            label="model",
+        )
+    axis.set_title("Probability calibration")
+    axis.set_xlabel("Mean predicted probability")
+    axis.set_ylabel("Observed positive rate")
+    axis.set_xlim(0, 1)
+    axis.set_ylim(0, 1)
     axis.legend()
     figure.tight_layout()
     figure.savefig(path, dpi=160)

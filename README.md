@@ -18,7 +18,7 @@ The original `quality` score is used to create `good_quality`, but it is not pas
 6. Train and evaluate the PyTorch model.
 7. Optionally tune the classification threshold on the validation set.
 
-The model is a small `TabularMLP` with 11 inputs, hidden layers of 64 and 32 units, ReLU activations, dropout, and one output logit. Training uses Adam, class-weighted `BCEWithLogitsLoss`, gradient clipping, and early stopping based on validation loss. Evaluation includes accuracy, precision, recall, F1, balanced accuracy, Matthews correlation coefficient, ROC-AUC, and average precision.
+The model is a small `TabularMLP` with 11 inputs, hidden layers of 64 and 32 units, ReLU activations, dropout, and one output logit. Training uses Adam, class-weighted `BCEWithLogitsLoss`, gradient clipping, and early stopping based on validation loss. Evaluation includes accuracy, precision, recall, F1, balanced accuracy, Matthews correlation coefficient, ROC-AUC, average precision, Brier score, and calibration diagnostics.
 
 ## Technology
 
@@ -66,6 +66,8 @@ reports/
 ├── metrics.json
 ├── run_summary.json
 ├── test_predictions.csv
+├── calibration.json
+├── calibration_curve.png
 ├── confusion_matrix.png
 ├── learning_curve.png
 ├── threshold_curve.png

@@ -9,7 +9,7 @@ from src.data import (
     split_dataset,
     validate_schema,
 )
-from src.evaluate import classification_metrics, threshold_search
+from src.evaluate import calibration_table, classification_metrics, threshold_search
 from src.model import TabularMLP
 from src.train import TrainConfig, make_loader, train_model
 
@@ -69,6 +69,7 @@ def test_metrics_include_balanced_views() -> None:
     assert metrics["accuracy"] == 1.0
     assert metrics["balanced_accuracy"] == 1.0
     assert metrics["matthews_correlation"] == 1.0
+    assert metrics["brier_score"] == pytest.approx(0.02125)
 
 
 def test_metrics_reject_invalid_threshold() -> None:
@@ -83,6 +84,24 @@ def test_metrics_reject_invalid_threshold() -> None:
 def test_metrics_reject_empty_inputs() -> None:
     with pytest.raises(ValueError, match="must not be empty"):
         classification_metrics(np.array([]), np.array([]))
+
+
+def test_metrics_reject_probability_range_errors() -> None:
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        classification_metrics(np.array([0, 1]), np.array([-0.1, 0.8]))
+
+
+def test_calibration_table_reports_bin_errors() -> None:
+    report = calibration_table(
+        np.array([0, 0, 1, 1]),
+        np.array([0.1, 0.2, 0.8, 0.9]),
+        bins=2,
+    )
+
+    assert report["n_samples"] == 4
+    assert report["brier_score"] == pytest.approx(0.025)
+    assert report["expected_calibration_error"] == pytest.approx(0.15)
+    assert len(report["table"]) == 2
 
 
 def test_threshold_search_selects_validation_cutoff() -> None:
