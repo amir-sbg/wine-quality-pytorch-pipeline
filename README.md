@@ -77,10 +77,16 @@ reports/
 
 `test_predictions.csv` includes the test rows, predicted probabilities, class predictions, and a correctness flag for reviewing errors.
 
+## Notebooks
+
+`notebooks/00_data_exploration.ipynb` follows the same preprocessing path as the command-line pipeline and saves split, scaling, and feature-correlation checks under `reports/notebooks/`.
+
 ## Project structure
 
 ```text
 .
+├── notebooks/
+│   └── 00_data_exploration.ipynb
 ├── src/
 │   ├── data.py          # loading, validation, cleaning, and profiling
 │   ├── model.py         # PyTorch tabular model
