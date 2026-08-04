@@ -80,13 +80,15 @@ reports/
 ## Notebooks
 
 `notebooks/00_data_exploration.ipynb` follows the same preprocessing path as the command-line pipeline and saves split, scaling, and feature-correlation checks under `reports/notebooks/`.
+`notebooks/01_model_diagnostics.ipynb` reads the saved pipeline predictions and reviews threshold sensitivity, high-confidence mistakes, and probability separation by class.
 
 ## Project structure
 
 ```text
 .
 ├── notebooks/
-│   └── 00_data_exploration.ipynb
+│   ├── 00_data_exploration.ipynb
+│   └── 01_model_diagnostics.ipynb
 ├── src/
 │   ├── data.py          # loading, validation, cleaning, and profiling
 │   ├── model.py         # PyTorch tabular model
