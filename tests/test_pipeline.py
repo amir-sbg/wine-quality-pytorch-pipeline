@@ -16,6 +16,7 @@ from src.evaluate import (
     threshold_search,
 )
 from src.model import TabularMLP
+from src.pipeline import build_parser, choose_device, validate_runtime_args
 from src.train import TrainConfig, make_loader, train_model
 
 
@@ -65,6 +66,24 @@ def test_train_config_rejects_invalid_values() -> None:
         TrainConfig(learning_rate=0)
     with pytest.raises(ValueError, match="gradient_clip"):
         TrainConfig(gradient_clip=0)
+
+
+def test_runtime_args_reject_invalid_threshold() -> None:
+    args = build_parser().parse_args(["--threshold", "1.2"])
+
+    with pytest.raises(ValueError, match="threshold"):
+        validate_runtime_args(args)
+
+
+def test_runtime_args_reject_negative_permutation_repeats() -> None:
+    args = build_parser().parse_args(["--permutation-importance-repeats", "-1"])
+
+    with pytest.raises(ValueError, match="permutation_importance_repeats"):
+        validate_runtime_args(args)
+
+
+def test_auto_device_returns_torch_device() -> None:
+    assert isinstance(choose_device("auto"), torch.device)
 
 
 def test_metrics_include_balanced_views() -> None:

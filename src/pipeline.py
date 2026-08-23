@@ -43,7 +43,18 @@ def set_seed(seed: int) -> None:
 def choose_device(requested: str) -> torch.device:
     if requested == "auto":
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if requested == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA was requested but is not available")
     return torch.device(requested)
+
+
+def validate_runtime_args(args: argparse.Namespace) -> None:
+    if not 0.0 <= args.threshold <= 1.0:
+        raise ValueError("threshold must be between 0 and 1")
+    if args.permutation_importance_repeats < 0:
+        raise ValueError("permutation_importance_repeats must not be negative")
+    if args.quality_threshold < 0:
+        raise ValueError("quality_threshold must not be negative")
 
 
 def status(message: str, quiet: bool) -> None:
@@ -61,6 +72,7 @@ def save_scaler(scaler: StandardScaler, feature_names: list[str], path: Path) ->
 
 
 def run(args: argparse.Namespace) -> dict:
+    validate_runtime_args(args)
     set_seed(args.seed)
     device = choose_device(args.device)
 
