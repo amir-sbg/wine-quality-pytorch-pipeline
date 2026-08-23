@@ -157,6 +157,67 @@ def threshold_search(
     }
 
 
+def permutation_importance(
+    model: nn.Module,
+    features: np.ndarray,
+    labels: np.ndarray,
+    feature_names: list[str],
+    device: torch.device,
+    threshold: float = 0.5,
+    metric: str = "f1",
+    repeats: int = 5,
+    seed: int = 42,
+) -> dict[str, float | str | list[dict[str, float | str]]]:
+    if metric not in THRESHOLD_METRICS | {"roc_auc", "average_precision"}:
+        raise ValueError("unsupported permutation metric")
+    if repeats < 1:
+        raise ValueError("repeats must be at least 1")
+    if features.ndim != 2:
+        raise ValueError("features must be a two-dimensional matrix")
+    if features.shape[1] != len(feature_names):
+        raise ValueError("feature_names must match the number of feature columns")
+
+    labels = np.asarray(labels, dtype=int)
+    baseline_probabilities = predict_probabilities(model, features, device)
+    baseline_metrics = classification_metrics(labels, baseline_probabilities, threshold)
+    baseline_score = baseline_metrics[metric]
+    if baseline_score is None:
+        raise ValueError(f"metric is unavailable for this label distribution: {metric}")
+
+    generator = np.random.default_rng(seed)
+    rows = []
+    for column_index, feature_name in enumerate(feature_names):
+        scores = []
+        for _ in range(repeats):
+            shuffled = features.copy()
+            shuffled[:, column_index] = generator.permutation(shuffled[:, column_index])
+            probabilities = predict_probabilities(model, shuffled, device)
+            shuffled_metrics = classification_metrics(labels, probabilities, threshold)
+            score = shuffled_metrics[metric]
+            if score is None:
+                raise ValueError(f"metric is unavailable after permutation: {metric}")
+            scores.append(float(score))
+        scores_array = np.asarray(scores, dtype=float)
+        rows.append(
+            {
+                "feature": feature_name,
+                "baseline_score": float(baseline_score),
+                "mean_score": float(scores_array.mean()),
+                "std_score": float(scores_array.std(ddof=0)),
+                "importance": float(baseline_score - scores_array.mean()),
+            }
+        )
+
+    rows = sorted(rows, key=lambda row: row["importance"], reverse=True)
+    return {
+        "metric": metric,
+        "threshold": float(threshold),
+        "repeats": repeats,
+        "baseline_score": float(baseline_score),
+        "features": rows,
+    }
+
+
 def _save_json(value: dict, path: Path) -> None:
     path.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n")
 
@@ -172,6 +233,22 @@ def save_threshold_curve(
     axis.set_title("Validation threshold search")
     axis.set_xlabel("Classification threshold")
     axis.set_ylabel(metric.replace("_", " "))
+    figure.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(path, dpi=160)
+    plt.close(figure)
+
+
+def save_permutation_importance_plot(
+    importance_rows: list[dict[str, float | str]],
+    path: Path,
+    top_k: int = 10,
+) -> None:
+    frame = pd.DataFrame(importance_rows).head(top_k).iloc[::-1]
+    figure, axis = plt.subplots(figsize=(7, 5))
+    axis.barh(frame["feature"], frame["importance"])
+    axis.set_title("Permutation feature importance")
+    axis.set_xlabel("Baseline score drop")
     figure.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(path, dpi=160)

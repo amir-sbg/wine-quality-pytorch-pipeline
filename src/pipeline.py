@@ -21,8 +21,10 @@ from .data import (
     summarize_dataset,
 )
 from .evaluate import (
+    permutation_importance,
     predict_probabilities,
     save_evaluation_outputs,
+    save_permutation_importance_plot,
     save_threshold_curve,
     threshold_search,
 )
@@ -196,6 +198,28 @@ def run(args: argparse.Namespace) -> dict:
         device=device,
         threshold=selected_threshold,
     )
+    importance_report = None
+    if args.permutation_importance_repeats > 0:
+        importance_report = permutation_importance(
+            model=model,
+            features=test_features,
+            labels=test_frame["good_quality"].to_numpy(dtype=int),
+            feature_names=FEATURE_COLUMNS,
+            device=device,
+            threshold=selected_threshold,
+            metric=args.importance_metric,
+            repeats=args.permutation_importance_repeats,
+            seed=args.seed + 17,
+        )
+        save_json(importance_report, report_dir / "permutation_importance.json")
+        pd.DataFrame(importance_report["features"]).to_csv(
+            report_dir / "permutation_importance.csv",
+            index=False,
+        )
+        save_permutation_importance_plot(
+            importance_report["features"],
+            report_dir / "permutation_importance.png",
+        )
     roc_auc = metrics["roc_auc"]
     roc_auc_text = f"{roc_auc:.3f}" if roc_auc is not None else "n/a"
     status(
@@ -218,6 +242,7 @@ def run(args: argparse.Namespace) -> dict:
         "requested_threshold": args.threshold,
         "selected_threshold": selected_threshold,
         "threshold_tuning": threshold_report,
+        "permutation_importance": importance_report,
         "training": training_summary,
         "test_metrics": metrics,
     }
@@ -248,6 +273,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="auto")
     parser.add_argument("--tune-threshold", action="store_true")
+    parser.add_argument("--permutation-importance-repeats", type=int, default=5)
+    parser.add_argument(
+        "--importance-metric",
+        choices=["f1", "balanced_accuracy", "matthews_correlation", "roc_auc", "average_precision"],
+        default="f1",
+    )
     parser.add_argument(
         "--threshold-metric",
         choices=["f1", "balanced_accuracy", "matthews_correlation"],

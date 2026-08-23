@@ -9,7 +9,12 @@ from src.data import (
     split_dataset,
     validate_schema,
 )
-from src.evaluate import calibration_table, classification_metrics, threshold_search
+from src.evaluate import (
+    calibration_table,
+    classification_metrics,
+    permutation_importance,
+    threshold_search,
+)
 from src.model import TabularMLP
 from src.train import TrainConfig, make_loader, train_model
 
@@ -112,6 +117,36 @@ def test_threshold_search_selects_validation_cutoff() -> None:
     assert result["metric"] == "f1"
     assert 0.40 < result["best_threshold"] <= 0.60
     assert result["best_score"] == 1.0
+
+
+def test_permutation_importance_ranks_used_feature_first() -> None:
+    class FirstFeatureModel(torch.nn.Module):
+        def forward(self, features: torch.Tensor) -> torch.Tensor:
+            return 6.0 * (features[:, 0] - 0.5)
+
+    features = np.array(
+        [
+            [0.0, 0.2],
+            [0.1, 0.8],
+            [0.9, 0.4],
+            [1.0, 0.6],
+        ],
+        dtype=np.float32,
+    )
+    labels = np.array([0, 0, 1, 1])
+
+    report = permutation_importance(
+        model=FirstFeatureModel(),
+        features=features,
+        labels=labels,
+        feature_names=["signal", "noise"],
+        device=torch.device("cpu"),
+        repeats=3,
+        seed=3,
+    )
+
+    assert report["features"][0]["feature"] == "signal"
+    assert report["features"][0]["importance"] > report["features"][1]["importance"]
 
 
 def test_model_returns_one_logit_per_row() -> None:
