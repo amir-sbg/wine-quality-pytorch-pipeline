@@ -17,9 +17,10 @@ The original `quality` score is used to create `good_quality`, but it is not pas
 5. Fit `StandardScaler` on the training partition and apply it to the other partitions.
 6. Train and evaluate the PyTorch model.
 7. Optionally tune the classification threshold on the validation set.
-8. Estimate permutation feature importance on the held-out test split.
+8. Review slice metrics across chemistry ranges such as alcohol, acidity, and sulphates.
+9. Estimate permutation feature importance on the held-out test split.
 
-The model is a small `TabularMLP` with 11 inputs, hidden layers of 64 and 32 units, ReLU activations, dropout, and one output logit. Training uses Adam, class-weighted `BCEWithLogitsLoss`, gradient clipping, and early stopping based on validation loss. Evaluation includes accuracy, precision, recall, F1, balanced accuracy, Matthews correlation coefficient, ROC-AUC, average precision, Brier score, calibration diagnostics, bootstrap confidence intervals, threshold search, and permutation importance.
+The model is a small `TabularMLP` with 11 inputs, hidden layers of 64 and 32 units, ReLU activations, dropout, and one output logit. Training uses Adam, class-weighted `BCEWithLogitsLoss`, gradient clipping, and early stopping based on validation loss. Evaluation includes accuracy, precision, recall, F1, balanced accuracy, Matthews correlation coefficient, ROC-AUC, average precision, Brier score, calibration diagnostics, bootstrap confidence intervals, feature-slice checks, threshold search, and permutation importance.
 
 ## Technology
 
@@ -50,6 +51,7 @@ python -m src.pipeline \
   --quality-threshold 6 \
   --tune-threshold \
   --bootstrap-samples 250 \
+  --slice-features alcohol "volatile acidity" sulphates \
   --permutation-importance-repeats 5 \
   --seed 42 \
   --device auto
@@ -77,6 +79,7 @@ reports/
 ├── permutation_importance.csv
 ├── permutation_importance.json
 ├── permutation_importance.png
+├── slice_metrics.json
 ├── threshold_curve.png
 ├── threshold_search.json
 └── roc_curve.png

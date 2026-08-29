@@ -57,6 +57,11 @@ def validate_runtime_args(args: argparse.Namespace) -> None:
         raise ValueError("bootstrap_samples must not be negative")
     if args.quality_threshold < 0:
         raise ValueError("quality_threshold must not be negative")
+    missing_slice_features = sorted(set(args.slice_features).difference(FEATURE_COLUMNS))
+    if missing_slice_features:
+        raise ValueError(f"unknown slice features: {missing_slice_features}")
+    if args.slice_bins < 2:
+        raise ValueError("slice_bins must be at least 2")
 
 
 def status(message: str, quiet: bool) -> None:
@@ -213,6 +218,8 @@ def run(args: argparse.Namespace) -> dict:
         threshold=selected_threshold,
         bootstrap_samples=args.bootstrap_samples,
         seed=args.seed,
+        slice_features=tuple(args.slice_features),
+        slice_bins=args.slice_bins,
     )
     importance_report = None
     if args.permutation_importance_repeats > 0:
@@ -291,6 +298,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tune-threshold", action="store_true")
     parser.add_argument("--permutation-importance-repeats", type=int, default=5)
     parser.add_argument("--bootstrap-samples", type=int, default=250)
+    parser.add_argument(
+        "--slice-features",
+        nargs="*",
+        default=["alcohol", "volatile acidity", "sulphates"],
+    )
+    parser.add_argument("--slice-bins", type=int, default=3)
     parser.add_argument(
         "--importance-metric",
         choices=["f1", "balanced_accuracy", "matthews_correlation", "roc_auc", "average_precision"],

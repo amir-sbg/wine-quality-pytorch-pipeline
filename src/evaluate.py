@@ -219,6 +219,88 @@ def bootstrap_metric_intervals(
     }
 
 
+def feature_slice_metrics(
+    frame: pd.DataFrame,
+    probabilities: np.ndarray,
+    feature_names: tuple[str, ...],
+    threshold: float = 0.5,
+    bins: int = 3,
+) -> dict[str, int | float | list[dict[str, float | int | str | None]]]:
+    if bins < 2:
+        raise ValueError("bins must be at least 2")
+    if "good_quality" not in frame:
+        raise ValueError("frame must include good_quality")
+    missing = sorted(set(feature_names).difference(frame.columns))
+    if missing:
+        raise ValueError(f"slice features are missing from the frame: {missing}")
+
+    labels = frame["good_quality"].to_numpy(dtype=int)
+    probabilities = np.asarray(probabilities, dtype=float)
+    classification_metrics(labels, probabilities, threshold)
+
+    rows = []
+    for feature in feature_names:
+        values = pd.to_numeric(frame[feature], errors="raise").reset_index(drop=True)
+        bucket_count = min(bins, int(values.nunique()))
+        if bucket_count < 2:
+            buckets = pd.Series(["all"], index=values.index)
+        else:
+            buckets = pd.qcut(values, q=bucket_count, duplicates="drop")
+
+        working = pd.DataFrame(
+            {
+                "label": labels,
+                "probability": probabilities,
+                "value": values,
+                "bucket": buckets.astype(str),
+            }
+        )
+        for bucket, group in working.groupby("bucket", sort=False):
+            rows.append(
+                {
+                    "feature": feature,
+                    "bucket": str(bucket),
+                    "count": int(len(group)),
+                    "min_value": float(group["value"].min()),
+                    "max_value": float(group["value"].max()),
+                    **_binary_slice_metrics(
+                        group["label"].to_numpy(dtype=int),
+                        group["probability"].to_numpy(dtype=float),
+                        threshold,
+                    ),
+                }
+            )
+
+    return {
+        "threshold": float(threshold),
+        "bins": bins,
+        "rows": rows,
+    }
+
+
+def _binary_slice_metrics(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    threshold: float,
+) -> dict[str, float | None]:
+    predictions = (probabilities >= threshold).astype(int)
+    result: dict[str, float | None] = {
+        "positive_rate": float(predictions.mean()),
+        "mean_probability": float(probabilities.mean()),
+        "accuracy": float((predictions == labels).mean()),
+        "precision": float(precision_score(labels, predictions, zero_division=0)),
+        "recall": float(recall_score(labels, predictions, zero_division=0)),
+        "f1": float(f1_score(labels, predictions, zero_division=0)),
+        "brier_score": float(brier_score_loss(labels, probabilities)),
+        "balanced_accuracy": None,
+    }
+    if len(np.unique(labels)) == 2:
+        result["balanced_accuracy"] = float(
+            balanced_accuracy_score(labels, predictions)
+        )
+    return result
+
+
 def permutation_importance(
     model: nn.Module,
     features: np.ndarray,
@@ -327,6 +409,8 @@ def save_evaluation_outputs(
     threshold: float = 0.5,
     bootstrap_samples: int = 250,
     seed: int = 42,
+    slice_features: tuple[str, ...] = ("alcohol", "volatile acidity", "sulphates"),
+    slice_bins: int = 3,
 ) -> dict[str, float | int | None]:
     output_dir.mkdir(parents=True, exist_ok=True)
     labels = test_frame["good_quality"].to_numpy(dtype=int)
@@ -345,6 +429,15 @@ def save_evaluation_outputs(
             seed=seed,
         )
         _save_json(intervals, output_dir / "metric_intervals.json")
+    if slice_features:
+        slices = feature_slice_metrics(
+            test_frame,
+            probabilities,
+            feature_names=slice_features,
+            threshold=threshold,
+            bins=slice_bins,
+        )
+        _save_json(slices, output_dir / "slice_metrics.json")
 
     predictions_frame = test_frame.reset_index(drop=True).copy()
     predictions_frame["prediction_probability"] = probabilities

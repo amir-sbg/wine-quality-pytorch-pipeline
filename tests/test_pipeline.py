@@ -13,6 +13,7 @@ from src.evaluate import (
     bootstrap_metric_intervals,
     calibration_table,
     classification_metrics,
+    feature_slice_metrics,
     permutation_importance,
     threshold_search,
 )
@@ -87,6 +88,13 @@ def test_runtime_args_reject_negative_bootstrap_samples() -> None:
     args = build_parser().parse_args(["--bootstrap-samples", "-2"])
 
     with pytest.raises(ValueError, match="bootstrap_samples"):
+        validate_runtime_args(args)
+
+
+def test_runtime_args_reject_unknown_slice_features() -> None:
+    args = build_parser().parse_args(["--slice-features", "alcohol", "made up"])
+
+    with pytest.raises(ValueError, match="unknown slice features"):
         validate_runtime_args(args)
 
 
@@ -167,6 +175,35 @@ def test_bootstrap_metric_intervals_validate_sample_count() -> None:
             np.array([0, 1]),
             np.array([0.1, 0.9]),
             samples=0,
+        )
+
+
+def test_feature_slice_metrics_report_feature_bands() -> None:
+    frame = clean_and_label(sample_frame(12))
+    frame["alcohol"] = np.linspace(8.0, 14.0, len(frame))
+    probabilities = np.linspace(0.1, 0.9, len(frame))
+
+    report = feature_slice_metrics(
+        frame,
+        probabilities,
+        feature_names=("alcohol",),
+        threshold=0.5,
+        bins=3,
+    )
+
+    assert report["bins"] == 3
+    assert sum(row["count"] for row in report["rows"]) == len(frame)
+    assert {row["feature"] for row in report["rows"]} == {"alcohol"}
+
+
+def test_feature_slice_metrics_reject_missing_feature() -> None:
+    frame = clean_and_label(sample_frame(4))
+
+    with pytest.raises(ValueError, match="missing"):
+        feature_slice_metrics(
+            frame,
+            np.array([0.1, 0.2, 0.8, 0.9]),
+            feature_names=("not a column",),
         )
 
 
