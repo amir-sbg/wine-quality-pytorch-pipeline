@@ -157,6 +157,68 @@ def threshold_search(
     }
 
 
+def bootstrap_metric_intervals(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    threshold: float = 0.5,
+    samples: int = 250,
+    confidence: float = 0.95,
+    seed: int = 42,
+) -> dict[str, float | int | dict[str, dict[str, float]]]:
+    if samples < 1:
+        raise ValueError("samples must be at least 1")
+    if not 0.0 < confidence < 1.0:
+        raise ValueError("confidence must be between 0 and 1")
+    labels = np.asarray(labels, dtype=int)
+    probabilities = np.asarray(probabilities, dtype=float)
+    classification_metrics(labels, probabilities, threshold)
+
+    generator = np.random.default_rng(seed)
+    collected: dict[str, list[float]] = {}
+    skipped_degenerate_samples = 0
+    draws = 0
+    attempts = 0
+    needs_two_classes = len(np.unique(labels)) == 2
+    max_attempts = samples * 20
+
+    while draws < samples and attempts < max_attempts:
+        attempts += 1
+        indices = generator.integers(0, len(labels), size=len(labels))
+        if needs_two_classes and len(np.unique(labels[indices])) < 2:
+            skipped_degenerate_samples += 1
+            continue
+        metrics = classification_metrics(
+            labels[indices],
+            probabilities[indices],
+            threshold,
+        )
+        for name, value in metrics.items():
+            if isinstance(value, (int, float)):
+                collected.setdefault(name, []).append(float(value))
+        draws += 1
+
+    if draws == 0:
+        raise ValueError("could not draw a valid bootstrap sample")
+
+    alpha = (1.0 - confidence) / 2.0
+    intervals = {}
+    for name, values in collected.items():
+        sample_values = np.asarray(values, dtype=float)
+        intervals[name] = {
+            "mean": float(sample_values.mean()),
+            "lower": float(np.quantile(sample_values, alpha)),
+            "upper": float(np.quantile(sample_values, 1.0 - alpha)),
+        }
+    return {
+        "samples": samples,
+        "used_samples": draws,
+        "skipped_degenerate_samples": skipped_degenerate_samples,
+        "confidence": confidence,
+        "threshold": float(threshold),
+        "metrics": intervals,
+    }
+
+
 def permutation_importance(
     model: nn.Module,
     features: np.ndarray,
@@ -263,6 +325,8 @@ def save_evaluation_outputs(
     output_dir: Path,
     device: torch.device,
     threshold: float = 0.5,
+    bootstrap_samples: int = 250,
+    seed: int = 42,
 ) -> dict[str, float | int | None]:
     output_dir.mkdir(parents=True, exist_ok=True)
     labels = test_frame["good_quality"].to_numpy(dtype=int)
@@ -272,6 +336,15 @@ def save_evaluation_outputs(
     calibration = calibration_table(labels, probabilities)
     _save_json(metrics, output_dir / "metrics.json")
     _save_json(calibration, output_dir / "calibration.json")
+    if bootstrap_samples > 0:
+        intervals = bootstrap_metric_intervals(
+            labels,
+            probabilities,
+            threshold=threshold,
+            samples=bootstrap_samples,
+            seed=seed,
+        )
+        _save_json(intervals, output_dir / "metric_intervals.json")
 
     predictions_frame = test_frame.reset_index(drop=True).copy()
     predictions_frame["prediction_probability"] = probabilities

@@ -10,6 +10,7 @@ from src.data import (
     validate_schema,
 )
 from src.evaluate import (
+    bootstrap_metric_intervals,
     calibration_table,
     classification_metrics,
     permutation_importance,
@@ -82,6 +83,13 @@ def test_runtime_args_reject_negative_permutation_repeats() -> None:
         validate_runtime_args(args)
 
 
+def test_runtime_args_reject_negative_bootstrap_samples() -> None:
+    args = build_parser().parse_args(["--bootstrap-samples", "-2"])
+
+    with pytest.raises(ValueError, match="bootstrap_samples"):
+        validate_runtime_args(args)
+
+
 def test_auto_device_returns_torch_device() -> None:
     assert isinstance(choose_device("auto"), torch.device)
 
@@ -136,6 +144,30 @@ def test_threshold_search_selects_validation_cutoff() -> None:
     assert result["metric"] == "f1"
     assert 0.40 < result["best_threshold"] <= 0.60
     assert result["best_score"] == 1.0
+
+
+def test_bootstrap_metric_intervals_report_uncertainty() -> None:
+    intervals = bootstrap_metric_intervals(
+        labels=np.array([0, 0, 1, 1]),
+        probabilities=np.array([0.10, 0.20, 0.80, 0.90]),
+        threshold=0.5,
+        samples=20,
+        seed=7,
+    )
+
+    assert intervals["samples"] == 20
+    assert intervals["used_samples"] == 20
+    assert "f1" in intervals["metrics"]
+    assert intervals["metrics"]["f1"]["lower"] <= intervals["metrics"]["f1"]["upper"]
+
+
+def test_bootstrap_metric_intervals_validate_sample_count() -> None:
+    with pytest.raises(ValueError, match="samples"):
+        bootstrap_metric_intervals(
+            np.array([0, 1]),
+            np.array([0.1, 0.9]),
+            samples=0,
+        )
 
 
 def test_permutation_importance_ranks_used_feature_first() -> None:
