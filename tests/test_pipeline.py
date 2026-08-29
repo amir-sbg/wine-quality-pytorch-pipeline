@@ -131,6 +131,19 @@ def test_metrics_reject_probability_range_errors() -> None:
         classification_metrics(np.array([0, 1]), np.array([-0.1, 0.8]))
 
 
+def test_metrics_reject_non_binary_labels() -> None:
+    with pytest.raises(ValueError, match="binary"):
+        classification_metrics(np.array([0, 2]), np.array([0.1, 0.8]))
+
+
+def test_metrics_leave_balanced_accuracy_empty_for_single_class() -> None:
+    metrics = classification_metrics(np.array([1, 1]), np.array([0.7, 0.8]))
+
+    assert metrics["balanced_accuracy"] is None
+    assert metrics["matthews_correlation"] is None
+    assert metrics["roc_auc"] is None
+
+
 def test_calibration_table_reports_bin_errors() -> None:
     report = calibration_table(
         np.array([0, 0, 1, 1]),

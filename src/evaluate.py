@@ -59,6 +59,9 @@ def classification_metrics(
         raise ValueError("probabilities must be finite")
     if (probabilities < 0).any() or (probabilities > 1).any():
         raise ValueError("probabilities must be between 0 and 1")
+    unique_labels = np.unique(labels)
+    if not set(unique_labels).issubset({0, 1}):
+        raise ValueError("labels must be binary")
     predictions = (probabilities >= threshold).astype(int)
     metrics: dict[str, float | int | None] = {
         "n_samples": int(len(labels)),
@@ -68,16 +71,18 @@ def classification_metrics(
         "precision": float(precision_score(labels, predictions, zero_division=0)),
         "recall": float(recall_score(labels, predictions, zero_division=0)),
         "f1": float(f1_score(labels, predictions, zero_division=0)),
-        "balanced_accuracy": float(
-            balanced_accuracy_score(labels, predictions)
-        ),
-        "matthews_correlation": float(
-            matthews_corrcoef(labels, predictions)
-        ),
+        "matthews_correlation": None,
         "brier_score": float(brier_score_loss(labels, probabilities)),
+        "balanced_accuracy": None,
     }
 
-    if len(np.unique(labels)) == 2:
+    if len(unique_labels) == 2:
+        metrics["balanced_accuracy"] = float(
+            balanced_accuracy_score(labels, predictions)
+        )
+        metrics["matthews_correlation"] = float(
+            matthews_corrcoef(labels, predictions)
+        )
         metrics["roc_auc"] = float(roc_auc_score(labels, probabilities))
         metrics["average_precision"] = float(
             average_precision_score(labels, probabilities)
@@ -146,6 +151,8 @@ def threshold_search(
     rows = []
     for threshold in np.linspace(0.05, 0.95, steps):
         score = classification_metrics(labels, probabilities, float(threshold))[metric]
+        if score is None:
+            raise ValueError(f"metric is unavailable for this label distribution: {metric}")
         rows.append({"threshold": float(threshold), "score": float(score)})
 
     best = max(rows, key=lambda row: (row["score"], -abs(row["threshold"] - 0.5)))
