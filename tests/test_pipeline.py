@@ -20,7 +20,7 @@ from src.evaluate import (
 )
 from src.model import TabularMLP
 from src.pipeline import build_parser, choose_device, validate_runtime_args
-from src.train import TrainConfig, make_loader, train_model
+from src.train import TrainConfig, make_loader, train_model, training_diagnostics
 
 
 def sample_frame(rows: int = 12) -> pd.DataFrame:
@@ -104,6 +104,21 @@ def test_train_config_rejects_invalid_values() -> None:
         TrainConfig(learning_rate=0)
     with pytest.raises(ValueError, match="gradient_clip"):
         TrainConfig(gradient_clip=0)
+
+
+def test_training_diagnostics_report_loss_gaps() -> None:
+    diagnostics = training_diagnostics(
+        [
+            {"epoch": 1.0, "train_loss": 0.70, "validation_loss": 0.76},
+            {"epoch": 2.0, "train_loss": 0.58, "validation_loss": 0.62},
+            {"epoch": 3.0, "train_loss": 0.50, "validation_loss": 0.66},
+        ]
+    )
+
+    assert diagnostics["best_train_loss"] == 0.58
+    assert diagnostics["best_generalization_gap"] == pytest.approx(0.04)
+    assert diagnostics["final_generalization_gap"] == pytest.approx(0.16)
+    assert diagnostics["validation_loss_reduction"] == pytest.approx(0.14)
 
 
 def test_runtime_args_reject_invalid_threshold() -> None:
@@ -311,3 +326,4 @@ def test_training_smoke() -> None:
     assert len(history) == 2
     assert summary["epochs_trained"] == 2
     assert summary["best_epoch"] >= 1
+    assert "final_generalization_gap" in summary

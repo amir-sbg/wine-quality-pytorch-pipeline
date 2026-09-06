@@ -21,7 +21,7 @@ The original `quality` score is used to create `good_quality`, but it is not pas
 9. Review slice metrics across chemistry ranges such as alcohol, acidity, and sulphates.
 10. Estimate permutation feature importance on the held-out test split.
 
-The model is a small `TabularMLP` with 11 inputs, hidden layers of 64 and 32 units, ReLU activations, dropout, and one output logit. Training uses Adam, class-weighted `BCEWithLogitsLoss`, gradient clipping, and early stopping based on validation loss. Evaluation includes accuracy, precision, recall, F1, balanced accuracy, Matthews correlation coefficient, ROC-AUC, average precision, Brier score, calibration diagnostics, bootstrap confidence intervals, feature-slice checks, threshold search, and permutation importance.
+The model is a small `TabularMLP` with 11 inputs, hidden layers of 64 and 32 units, ReLU activations, dropout, and one output logit. Training uses Adam, class-weighted `BCEWithLogitsLoss`, gradient clipping, and early stopping based on validation loss. Evaluation includes accuracy, precision, recall, F1, balanced accuracy, Matthews correlation coefficient, ROC-AUC, average precision, Brier score, calibration diagnostics, bootstrap confidence intervals, feature-slice checks, threshold search, permutation importance, and train/validation loss-gap summaries.
 
 ## Technology
 

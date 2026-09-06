@@ -150,4 +150,29 @@ def train_model(
         "gradient_clip": config.gradient_clip,
         "positive_weight": positive_weight,
     }
+    summary.update(training_diagnostics(history))
     return model, history, summary
+
+
+def training_diagnostics(history: list[dict[str, float]]) -> dict[str, float]:
+    if not history:
+        raise ValueError("history must contain at least one epoch")
+    best = min(history, key=lambda row: row["validation_loss"])
+    first = history[0]
+    final = history[-1]
+    return {
+        "first_train_loss": float(first["train_loss"]),
+        "first_validation_loss": float(first["validation_loss"]),
+        "final_train_loss": float(final["train_loss"]),
+        "final_validation_loss": float(final["validation_loss"]),
+        "best_train_loss": float(best["train_loss"]),
+        "best_generalization_gap": float(
+            best["validation_loss"] - best["train_loss"]
+        ),
+        "final_generalization_gap": float(
+            final["validation_loss"] - final["train_loss"]
+        ),
+        "validation_loss_reduction": float(
+            first["validation_loss"] - best["validation_loss"]
+        ),
+    }
