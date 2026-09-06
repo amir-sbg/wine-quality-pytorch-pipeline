@@ -6,6 +6,7 @@ import torch
 from src.data import (
     FEATURE_COLUMNS,
     clean_and_label,
+    feature_shift_report,
     split_dataset,
     validate_schema,
 )
@@ -61,6 +62,41 @@ def test_split_dataset_is_stratified_and_reproducible() -> None:
     for first, second in zip(first_split, second_split):
         pd.testing.assert_frame_equal(first, second)
         assert first["good_quality"].mean() == 0.5
+
+
+def test_feature_shift_report_tracks_split_differences() -> None:
+    frame = sample_frame(12)
+    frame.loc[:, "fixed acidity"] = np.linspace(7.0, 9.0, len(frame))
+    frame.loc[:, "alcohol"] = np.linspace(8.0, 13.0, len(frame))
+    reference = clean_and_label(frame)
+    comparison = reference.copy()
+    comparison["alcohol"] = comparison["alcohol"] + 2.0
+
+    report = feature_shift_report(
+        reference,
+        comparison,
+        feature_columns=["alcohol", "sulphates"],
+    )
+
+    assert report["reference_rows"] == 12
+    assert report["comparison_rows"] == 12
+    assert report["target_rate_delta"] == 0.0
+    assert report["max_abs_standardized_mean_difference"] > 0
+    assert {row["feature"] for row in report["features"]} == {
+        "alcohol",
+        "sulphates",
+    }
+
+
+def test_feature_shift_report_rejects_missing_columns() -> None:
+    reference = clean_and_label(sample_frame(4))
+
+    with pytest.raises(ValueError, match="missing"):
+        feature_shift_report(
+            reference,
+            reference.drop(columns=["alcohol"]),
+            feature_columns=["alcohol"],
+        )
 
 
 def test_train_config_rejects_invalid_values() -> None:

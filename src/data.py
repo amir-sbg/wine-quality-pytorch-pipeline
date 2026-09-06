@@ -106,6 +106,64 @@ def summarize_dataset(frame: pd.DataFrame) -> dict:
     }
 
 
+def feature_shift_report(
+    reference_frame: pd.DataFrame,
+    comparison_frame: pd.DataFrame,
+    feature_columns: list[str] = FEATURE_COLUMNS,
+) -> dict[str, int | float | None | list[dict[str, float | str]]]:
+    """Compare split-level feature statistics against the training partition."""
+    missing = sorted(
+        set(feature_columns).difference(reference_frame.columns)
+        | set(feature_columns).difference(comparison_frame.columns)
+    )
+    if missing:
+        raise ValueError(f"feature columns are missing: {missing}")
+    if reference_frame.empty or comparison_frame.empty:
+        raise ValueError("feature shift requires non-empty frames")
+
+    rows = []
+    for feature in feature_columns:
+        reference_values = pd.to_numeric(reference_frame[feature], errors="raise")
+        comparison_values = pd.to_numeric(comparison_frame[feature], errors="raise")
+        reference_std = float(reference_values.std(ddof=0))
+        scale = reference_std if reference_std > 0 else 1.0
+        reference_iqr = _iqr(reference_values)
+        comparison_iqr = _iqr(comparison_values)
+        rows.append(
+            {
+                "feature": feature,
+                "reference_mean": float(reference_values.mean()),
+                "comparison_mean": float(comparison_values.mean()),
+                "standardized_mean_difference": float(
+                    (comparison_values.mean() - reference_values.mean()) / scale
+                ),
+                "reference_median": float(reference_values.median()),
+                "comparison_median": float(comparison_values.median()),
+                "iqr_ratio": float(
+                    comparison_iqr / reference_iqr if reference_iqr > 0 else 1.0
+                ),
+            }
+        )
+
+    max_shift = max(abs(row["standardized_mean_difference"]) for row in rows)
+    target_rate_delta = None
+    if LABEL_COLUMN in reference_frame and LABEL_COLUMN in comparison_frame:
+        target_rate_delta = float(
+            comparison_frame[LABEL_COLUMN].mean() - reference_frame[LABEL_COLUMN].mean()
+        )
+    return {
+        "reference_rows": int(len(reference_frame)),
+        "comparison_rows": int(len(comparison_frame)),
+        "target_rate_delta": target_rate_delta,
+        "max_abs_standardized_mean_difference": float(max_shift),
+        "features": rows,
+    }
+
+
+def _iqr(values: pd.Series) -> float:
+    return float(values.quantile(0.75) - values.quantile(0.25))
+
+
 def split_dataset(
     frame: pd.DataFrame,
     seed: int,

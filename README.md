@@ -15,10 +15,11 @@ The original `quality` score is used to create `good_quality`, but it is not pas
 3. Create `good_quality` using `quality >= 6`.
 4. Make deterministic stratified 60/20/20 train, validation, and test splits.
 5. Fit `StandardScaler` on the training partition and apply it to the other partitions.
-6. Train and evaluate the PyTorch model.
-7. Optionally tune the classification threshold on the validation set.
-8. Review slice metrics across chemistry ranges such as alcohol, acidity, and sulphates.
-9. Estimate permutation feature importance on the held-out test split.
+6. Check feature-shift summaries between train, validation, and test partitions.
+7. Train and evaluate the PyTorch model.
+8. Optionally tune the classification threshold on the validation set.
+9. Review slice metrics across chemistry ranges such as alcohol, acidity, and sulphates.
+10. Estimate permutation feature importance on the held-out test split.
 
 The model is a small `TabularMLP` with 11 inputs, hidden layers of 64 and 32 units, ReLU activations, dropout, and one output logit. Training uses Adam, class-weighted `BCEWithLogitsLoss`, gradient clipping, and early stopping based on validation loss. Evaluation includes accuracy, precision, recall, F1, balanced accuracy, Matthews correlation coefficient, ROC-AUC, average precision, Brier score, calibration diagnostics, bootstrap confidence intervals, feature-slice checks, threshold search, and permutation importance.
 
@@ -70,6 +71,7 @@ reports/
 ├── data_quality.json
 ├── metrics.json
 ├── run_summary.json
+├── split_shift.json
 ├── test_predictions.csv
 ├── calibration.json
 ├── calibration_curve.png

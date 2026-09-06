@@ -15,6 +15,7 @@ from .data import (
     FEATURE_COLUMNS,
     clean_and_label,
     download_dataset,
+    feature_shift_report,
     load_raw_data,
     save_json,
     split_dataset,
@@ -118,6 +119,11 @@ def run(args: argparse.Namespace) -> dict:
         f"{len(test_frame)} test rows",
         args.quiet,
     )
+    split_shift = {
+        "validation": feature_shift_report(train_frame, validation_frame),
+        "test": feature_shift_report(train_frame, test_frame),
+    }
+    save_json(split_shift, report_dir / "split_shift.json")
 
     scaler = StandardScaler()
     train_features = scaler.fit_transform(train_frame[FEATURE_COLUMNS]).astype(
@@ -260,6 +266,7 @@ def run(args: argparse.Namespace) -> dict:
             "validation": len(validation_frame),
             "test": len(test_frame),
         },
+        "split_shift": split_shift,
         "feature_count": len(FEATURE_COLUMNS),
         "quality_threshold": args.quality_threshold,
         "requested_threshold": args.threshold,
