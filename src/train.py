@@ -38,12 +38,22 @@ def make_loader(
     labels: np.ndarray,
     batch_size: int,
     shuffle: bool,
+    seed: int | None = None,
 ) -> DataLoader:
     dataset = TensorDataset(
         torch.from_numpy(features).float(),
         torch.from_numpy(labels.astype(np.float32)),
     )
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+    generator = None
+    if seed is not None:
+        generator = torch.Generator()
+        generator.manual_seed(seed)
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        generator=generator,
+    )
 
 
 def _run_epoch(

@@ -146,6 +146,7 @@ def run(args: argparse.Namespace) -> dict:
         train_labels,
         batch_size=args.batch_size,
         shuffle=True,
+        seed=args.seed,
     )
     validation_loader = make_loader(
         validation_features,

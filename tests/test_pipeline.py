@@ -107,6 +107,19 @@ def test_train_config_rejects_invalid_values() -> None:
         TrainConfig(gradient_clip=0)
 
 
+def test_make_loader_uses_seed_for_shuffle_order() -> None:
+    features = np.arange(24, dtype=np.float32).reshape(12, 2)
+    labels = np.arange(12, dtype=np.float32)
+
+    first_loader = make_loader(features, labels, batch_size=4, shuffle=True, seed=123)
+    second_loader = make_loader(features, labels, batch_size=4, shuffle=True, seed=123)
+    first_batch = next(iter(first_loader))[1]
+    second_batch = next(iter(second_loader))[1]
+
+    torch.testing.assert_close(first_batch, second_batch)
+    assert not torch.equal(first_batch, torch.from_numpy(labels[:4]))
+
+
 def test_training_diagnostics_report_loss_gaps() -> None:
     diagnostics = training_diagnostics(
         [
