@@ -79,6 +79,52 @@ def save_scaler(scaler: StandardScaler, feature_names: list[str], path: Path) ->
     save_json(payload, path)
 
 
+def write_model_card(summary: dict, path: Path) -> Path:
+    metrics = summary["test_metrics"]
+    training = summary["training"]
+    threshold = summary["selected_threshold"]
+    top_feature = "n/a"
+    importance = summary.get("permutation_importance")
+    if importance and importance.get("features"):
+        top_feature = importance["features"][0]["feature"]
+
+    roc_auc = _format_metric(metrics.get("roc_auc"))
+    average_precision = _format_metric(metrics.get("average_precision"))
+    card = f"""# Wine Quality Classifier
+
+Binary classifier for predicting whether a red wine is likely to score at least
+{summary["quality_threshold"]} on the UCI quality scale from 11 chemistry measurements.
+
+## Run summary
+
+- Device: {summary["device"]}
+- Split sizes: {summary["split_sizes"]["train"]} train / {summary["split_sizes"]["validation"]} validation / {summary["split_sizes"]["test"]} test
+- Best epoch: {training["best_epoch"]} of {training["epochs_trained"]} trained epochs
+- Decision threshold: {threshold:.3f}
+
+## Test metrics
+
+- Accuracy: {metrics["accuracy"]:.3f}
+- F1: {metrics["f1"]:.3f}
+- Balanced accuracy: {_format_metric(metrics.get("balanced_accuracy"))}
+- ROC-AUC: {roc_auc}
+- Average precision: {average_precision}
+- Brier score: {metrics["brier_score"]:.3f}
+
+## Notes
+
+The preprocessing scaler is fitted only on the training split. The run also saves
+calibration, threshold, slice, bootstrap, and permutation-importance reports for
+error analysis. Top permutation feature in this run: `{top_feature}`.
+"""
+    path.write_text(card, encoding="utf-8")
+    return path
+
+
+def _format_metric(value: object) -> str:
+    return "n/a" if value is None else f"{float(value):.3f}"
+
+
 def run(args: argparse.Namespace) -> dict:
     validate_runtime_args(args)
     set_seed(args.seed)
@@ -278,6 +324,7 @@ def run(args: argparse.Namespace) -> dict:
         "test_metrics": metrics,
     }
     save_json(run_summary, report_dir / "run_summary.json")
+    write_model_card(run_summary, report_dir / "model_card.md")
     (artifact_dir / "run_config.json").write_text(
         json.dumps(vars(args), indent=2) + "\n"
     )

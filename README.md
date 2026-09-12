@@ -79,6 +79,7 @@ reports/
 ├── confusion_matrix.png
 ├── learning_curve.png
 ├── metric_intervals.json
+├── model_card.md
 ├── operating_points.json
 ├── permutation_importance.csv
 ├── permutation_importance.json

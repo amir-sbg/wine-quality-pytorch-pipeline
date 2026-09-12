@@ -20,7 +20,7 @@ from src.evaluate import (
     threshold_search,
 )
 from src.model import TabularMLP
-from src.pipeline import build_parser, choose_device, validate_runtime_args
+from src.pipeline import build_parser, choose_device, validate_runtime_args, write_model_card
 from src.train import TrainConfig, make_loader, train_model, training_diagnostics
 
 
@@ -161,6 +161,34 @@ def test_runtime_args_reject_unknown_slice_features() -> None:
 
     with pytest.raises(ValueError, match="unknown slice features"):
         validate_runtime_args(args)
+
+
+def test_write_model_card_summarizes_run(tmp_path) -> None:
+    summary = {
+        "device": "cpu",
+        "split_sizes": {"train": 100, "validation": 30, "test": 30},
+        "quality_threshold": 6,
+        "selected_threshold": 0.45,
+        "training": {"best_epoch": 8, "epochs_trained": 12},
+        "test_metrics": {
+            "accuracy": 0.80,
+            "f1": 0.75,
+            "balanced_accuracy": 0.78,
+            "roc_auc": 0.84,
+            "average_precision": 0.82,
+            "brier_score": 0.16,
+        },
+        "permutation_importance": {
+            "features": [{"feature": "alcohol", "importance": 0.12}]
+        },
+    }
+
+    path = write_model_card(summary, tmp_path / "model_card.md")
+
+    text = path.read_text(encoding="utf-8")
+    assert "Wine Quality Classifier" in text
+    assert "0.450" in text
+    assert "`alcohol`" in text
 
 
 def test_auto_device_returns_torch_device() -> None:
