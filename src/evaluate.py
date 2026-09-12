@@ -164,6 +164,53 @@ def threshold_search(
     }
 
 
+def operating_point_report(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    thresholds: tuple[float, ...] = (0.25, 0.35, 0.50, 0.65, 0.75),
+) -> dict[str, list[dict[str, float | int | None]] | dict[str, float | int | None]]:
+    if not thresholds:
+        raise ValueError("thresholds must not be empty")
+
+    rows = []
+    for threshold in thresholds:
+        metrics = classification_metrics(labels, probabilities, threshold)
+        predictions = (np.asarray(probabilities) >= threshold).astype(int)
+        true_negative, false_positive, false_negative, true_positive = (
+            confusion_matrix(labels, predictions, labels=[0, 1]).ravel()
+        )
+        rows.append(
+            {
+                "threshold": float(threshold),
+                "true_negative": int(true_negative),
+                "false_positive": int(false_positive),
+                "false_negative": int(false_negative),
+                "true_positive": int(true_positive),
+                "positive_rate": metrics["positive_rate"],
+                "precision": metrics["precision"],
+                "recall": metrics["recall"],
+                "f1": metrics["f1"],
+                "balanced_accuracy": metrics["balanced_accuracy"],
+            }
+        )
+
+    best_by_f1 = max(
+        rows,
+        key=lambda row: (float(row["f1"]), -abs(float(row["threshold"]) - 0.5)),
+    )
+    available_balanced = [row for row in rows if row["balanced_accuracy"] is not None]
+    best_by_balanced = (
+        max(available_balanced, key=lambda row: float(row["balanced_accuracy"]))
+        if available_balanced
+        else best_by_f1
+    )
+    return {
+        "thresholds": rows,
+        "best_by_f1": best_by_f1,
+        "best_by_balanced_accuracy": best_by_balanced,
+    }
+
+
 def bootstrap_metric_intervals(
     labels: np.ndarray,
     probabilities: np.ndarray,
@@ -425,8 +472,14 @@ def save_evaluation_outputs(
     predictions = (probabilities >= threshold).astype(int)
     metrics = classification_metrics(labels, probabilities, threshold)
     calibration = calibration_table(labels, probabilities)
+    operating_points = operating_point_report(labels, probabilities)
+    metrics["best_operating_threshold_f1"] = operating_points["best_by_f1"]["threshold"]
+    metrics["best_operating_threshold_balanced_accuracy"] = operating_points[
+        "best_by_balanced_accuracy"
+    ]["threshold"]
     _save_json(metrics, output_dir / "metrics.json")
     _save_json(calibration, output_dir / "calibration.json")
+    _save_json(operating_points, output_dir / "operating_points.json")
     if bootstrap_samples > 0:
         intervals = bootstrap_metric_intervals(
             labels,

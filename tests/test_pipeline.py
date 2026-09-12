@@ -15,6 +15,7 @@ from src.evaluate import (
     calibration_table,
     classification_metrics,
     feature_slice_metrics,
+    operating_point_report,
     permutation_importance,
     threshold_search,
 )
@@ -216,6 +217,20 @@ def test_threshold_search_selects_validation_cutoff() -> None:
     assert result["metric"] == "f1"
     assert 0.40 < result["best_threshold"] <= 0.60
     assert result["best_score"] == 1.0
+
+
+def test_operating_point_report_tracks_confusion_counts() -> None:
+    report = operating_point_report(
+        labels=np.array([0, 0, 1, 1]),
+        probabilities=np.array([0.20, 0.55, 0.65, 0.90]),
+        thresholds=(0.50, 0.70),
+    )
+
+    first = report["thresholds"][0]
+    assert first["true_negative"] == 1
+    assert first["false_positive"] == 1
+    assert first["true_positive"] == 2
+    assert report["best_by_f1"]["threshold"] == 0.5
 
 
 def test_bootstrap_metric_intervals_report_uncertainty() -> None:
