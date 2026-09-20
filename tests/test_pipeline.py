@@ -202,6 +202,8 @@ def test_metrics_include_balanced_views() -> None:
     assert metrics["accuracy"] == 1.0
     assert metrics["balanced_accuracy"] == 1.0
     assert metrics["matthews_correlation"] == 1.0
+    assert metrics["specificity"] == 1.0
+    assert metrics["false_positive_rate"] == 0.0
     assert metrics["brier_score"] == pytest.approx(0.02125)
 
 

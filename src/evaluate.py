@@ -74,14 +74,28 @@ def classification_metrics(
         "matthews_correlation": None,
         "brier_score": float(brier_score_loss(labels, probabilities)),
         "balanced_accuracy": None,
+        "specificity": None,
+        "false_positive_rate": None,
     }
 
     if len(unique_labels) == 2:
+        true_negative, false_positive, _, _ = confusion_matrix(
+            labels,
+            predictions,
+            labels=[0, 1],
+        ).ravel()
         metrics["balanced_accuracy"] = float(
             balanced_accuracy_score(labels, predictions)
         )
         metrics["matthews_correlation"] = float(
             matthews_corrcoef(labels, predictions)
+        )
+        negative_count = true_negative + false_positive
+        metrics["specificity"] = float(
+            true_negative / negative_count if negative_count else 0.0
+        )
+        metrics["false_positive_rate"] = float(
+            false_positive / negative_count if negative_count else 0.0
         )
         metrics["roc_auc"] = float(roc_auc_score(labels, probabilities))
         metrics["average_precision"] = float(
