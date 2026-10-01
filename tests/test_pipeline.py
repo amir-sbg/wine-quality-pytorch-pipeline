@@ -205,6 +205,7 @@ def test_metrics_include_balanced_views() -> None:
     assert metrics["specificity"] == 1.0
     assert metrics["false_positive_rate"] == 0.0
     assert metrics["brier_score"] == pytest.approx(0.02125)
+    assert metrics["log_loss"] < 0.17
 
 
 def test_metrics_reject_invalid_threshold() -> None:
