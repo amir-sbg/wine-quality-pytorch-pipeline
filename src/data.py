@@ -129,6 +129,10 @@ def feature_shift_report(
         scale = reference_std if reference_std > 0 else 1.0
         reference_iqr = _iqr(reference_values)
         comparison_iqr = _iqr(comparison_values)
+        stability_index = _population_stability_index(
+            reference_values.to_numpy(dtype=float),
+            comparison_values.to_numpy(dtype=float),
+        )
         rows.append(
             {
                 "feature": feature,
@@ -142,10 +146,12 @@ def feature_shift_report(
                 "iqr_ratio": float(
                     comparison_iqr / reference_iqr if reference_iqr > 0 else 1.0
                 ),
+                "population_stability_index": stability_index,
             }
         )
 
     max_shift = max(abs(row["standardized_mean_difference"]) for row in rows)
+    max_stability_index = max(row["population_stability_index"] for row in rows)
     target_rate_delta = None
     if LABEL_COLUMN in reference_frame and LABEL_COLUMN in comparison_frame:
         target_rate_delta = float(
@@ -156,12 +162,43 @@ def feature_shift_report(
         "comparison_rows": int(len(comparison_frame)),
         "target_rate_delta": target_rate_delta,
         "max_abs_standardized_mean_difference": float(max_shift),
+        "max_population_stability_index": float(max_stability_index),
         "features": rows,
     }
 
 
 def _iqr(values: pd.Series) -> float:
     return float(values.quantile(0.75) - values.quantile(0.25))
+
+
+def _population_stability_index(
+    reference: np.ndarray,
+    comparison: np.ndarray,
+    bins: int = 10,
+) -> float:
+    quantiles = np.linspace(0.0, 1.0, bins + 1)
+    edges = np.unique(np.quantile(reference, quantiles))
+    if len(edges) == 1:
+        edges = np.array([-np.inf, edges[0], np.inf])
+    else:
+        edges[0] = -np.inf
+        edges[-1] = np.inf
+
+    reference_counts, _ = np.histogram(reference, bins=edges)
+    comparison_counts, _ = np.histogram(comparison, bins=edges)
+    epsilon = 1e-6
+    reference_share = (reference_counts + epsilon) / (
+        reference_counts.sum() + epsilon * len(reference_counts)
+    )
+    comparison_share = (comparison_counts + epsilon) / (
+        comparison_counts.sum() + epsilon * len(comparison_counts)
+    )
+    return float(
+        np.sum(
+            (comparison_share - reference_share)
+            * np.log(comparison_share / reference_share)
+        )
+    )
 
 
 def split_dataset(

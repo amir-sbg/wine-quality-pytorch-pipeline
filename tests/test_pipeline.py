@@ -85,10 +85,14 @@ def test_feature_shift_report_tracks_split_differences() -> None:
     assert report["comparison_rows"] == 12
     assert report["target_rate_delta"] == 0.0
     assert report["max_abs_standardized_mean_difference"] > 0
+    assert report["max_population_stability_index"] > 0
     assert {row["feature"] for row in report["features"]} == {
         "alcohol",
         "sulphates",
     }
+    by_feature = {row["feature"]: row for row in report["features"]}
+    assert by_feature["alcohol"]["population_stability_index"] > 0
+    assert by_feature["sulphates"]["population_stability_index"] == 0.0
 
 
 def test_feature_shift_report_rejects_missing_columns() -> None:
