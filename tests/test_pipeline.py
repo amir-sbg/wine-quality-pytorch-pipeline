@@ -11,6 +11,7 @@ from src.data import (
     validate_schema,
 )
 from src.evaluate import (
+    brier_decomposition,
     bootstrap_metric_intervals,
     calibration_table,
     classification_metrics,
@@ -251,6 +252,25 @@ def test_calibration_table_reports_bin_errors() -> None:
     assert report["brier_score"] == pytest.approx(0.025)
     assert report["expected_calibration_error"] == pytest.approx(0.15)
     assert len(report["table"]) == 2
+
+
+def test_brier_decomposition_separates_reliability_and_resolution() -> None:
+    report = brier_decomposition(
+        np.array([0, 0, 1, 1]),
+        np.array([0.0, 0.0, 1.0, 1.0]),
+        bins=2,
+    )
+
+    assert report["base_rate"] == 0.5
+    assert report["reliability"] == 0.0
+    assert report["resolution"] == 0.25
+    assert report["uncertainty"] == 0.25
+    assert report["reconstructed_brier"] == 0.0
+
+
+def test_brier_decomposition_rejects_too_few_bins() -> None:
+    with pytest.raises(ValueError, match="bins"):
+        brier_decomposition(np.array([0, 1]), np.array([0.2, 0.8]), bins=1)
 
 
 def test_threshold_search_selects_validation_cutoff() -> None:

@@ -153,6 +153,52 @@ def calibration_table(
     }
 
 
+def brier_decomposition(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    bins: int = 10,
+) -> dict[str, float | int]:
+    """Decompose the Brier score into reliability, resolution, and uncertainty."""
+    if bins < 2:
+        raise ValueError("bins must be at least 2")
+    labels = np.asarray(labels, dtype=int)
+    probabilities = np.asarray(probabilities, dtype=float)
+    classification_metrics(labels, probabilities)
+
+    edges = np.linspace(0.0, 1.0, bins + 1)
+    assignments = np.minimum(np.digitize(probabilities, edges[1:-1]), bins - 1)
+    base_rate = float(labels.mean())
+    reliability = 0.0
+    resolution = 0.0
+    populated_bins = 0
+    for index in range(bins):
+        mask = assignments == index
+        count = int(mask.sum())
+        if count == 0:
+            continue
+        populated_bins += 1
+        weight = count / len(labels)
+        mean_probability = float(probabilities[mask].mean())
+        observed_rate = float(labels[mask].mean())
+        reliability += weight * (mean_probability - observed_rate) ** 2
+        resolution += weight * (observed_rate - base_rate) ** 2
+
+    uncertainty = base_rate * (1.0 - base_rate)
+    reconstructed = reliability - resolution + uncertainty
+    score = float(brier_score_loss(labels, probabilities))
+    return {
+        "bins": bins,
+        "populated_bins": populated_bins,
+        "base_rate": base_rate,
+        "brier_score": score,
+        "reliability": float(reliability),
+        "resolution": float(resolution),
+        "uncertainty": float(uncertainty),
+        "reconstructed_brier": float(reconstructed),
+        "binning_residual": float(score - reconstructed),
+    }
+
+
 def threshold_search(
     labels: np.ndarray,
     probabilities: np.ndarray,
