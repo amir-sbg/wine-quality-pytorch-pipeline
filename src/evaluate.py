@@ -199,6 +199,49 @@ def brier_decomposition(
     }
 
 
+def selective_risk_report(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    coverages: tuple[float, ...] = (1.0, 0.9, 0.8, 0.7, 0.5),
+) -> dict[str, float | int | list[dict[str, float | int]]]:
+    """Measure error after retaining only the most confident predictions."""
+    labels = np.asarray(labels, dtype=int)
+    probabilities = np.asarray(probabilities, dtype=float)
+    classification_metrics(labels, probabilities)
+    if not coverages or any(not 0.0 < value <= 1.0 for value in coverages):
+        raise ValueError("coverages must be in (0, 1]")
+
+    predictions = (probabilities >= 0.5).astype(int)
+    confidence = np.maximum(probabilities, 1.0 - probabilities)
+    order = np.argsort(-confidence, kind="stable")
+    ordered_errors = (predictions[order] != labels[order]).astype(float)
+    prefix_risk = np.cumsum(ordered_errors) / np.arange(1, len(labels) + 1)
+
+    rows = []
+    for target in coverages:
+        retained = min(len(labels), max(1, int(np.ceil(target * len(labels)))))
+        selected = order[:retained]
+        errors = int((predictions[selected] != labels[selected]).sum())
+        risk = errors / retained
+        rows.append(
+            {
+                "target_coverage": float(target),
+                "coverage": float(retained / len(labels)),
+                "retained": retained,
+                "errors": errors,
+                "selective_accuracy": float(1.0 - risk),
+                "selective_risk": float(risk),
+                "minimum_confidence": float(confidence[selected].min()),
+            }
+        )
+
+    return {
+        "n_samples": int(len(labels)),
+        "area_under_risk_coverage": float(prefix_risk.mean()),
+        "points": rows,
+    }
+
+
 def threshold_search(
     labels: np.ndarray,
     probabilities: np.ndarray,

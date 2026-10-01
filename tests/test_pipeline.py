@@ -18,6 +18,7 @@ from src.evaluate import (
     feature_slice_metrics,
     operating_point_report,
     permutation_importance,
+    selective_risk_report,
     threshold_search,
 )
 from src.model import TabularMLP
@@ -271,6 +272,29 @@ def test_brier_decomposition_separates_reliability_and_resolution() -> None:
 def test_brier_decomposition_rejects_too_few_bins() -> None:
     with pytest.raises(ValueError, match="bins"):
         brier_decomposition(np.array([0, 1]), np.array([0.2, 0.8]), bins=1)
+
+
+def test_selective_risk_drops_low_confidence_errors() -> None:
+    report = selective_risk_report(
+        np.array([0, 1, 1, 0]),
+        np.array([0.10, 0.90, 0.49, 0.80]),
+        coverages=(1.0, 0.5),
+    )
+
+    full, half = report["points"]
+    assert full["selective_risk"] == 0.5
+    assert half["retained"] == 2
+    assert half["selective_risk"] == 0.0
+    assert report["area_under_risk_coverage"] >= 0.0
+
+
+def test_selective_risk_validates_coverages() -> None:
+    with pytest.raises(ValueError, match="coverages"):
+        selective_risk_report(
+            np.array([0, 1]),
+            np.array([0.2, 0.8]),
+            coverages=(0.0,),
+        )
 
 
 def test_threshold_search_selects_validation_cutoff() -> None:
