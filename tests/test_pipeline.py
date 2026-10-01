@@ -18,6 +18,7 @@ from src.evaluate import (
     feature_slice_metrics,
     operating_point_report,
     permutation_importance,
+    save_evaluation_outputs,
     selective_risk_report,
     threshold_search,
 )
@@ -299,6 +300,35 @@ def test_selective_risk_validates_coverages() -> None:
             np.array([0.2, 0.8]),
             coverages=(0.0,),
         )
+
+
+def test_evaluation_outputs_include_probability_diagnostics(tmp_path) -> None:
+    class FirstFeatureModel(torch.nn.Module):
+        def forward(self, features: torch.Tensor) -> torch.Tensor:
+            return features[:, 0]
+
+    frame = sample_frame(4)
+    frame.loc[:, "fixed acidity"] = np.arange(4)
+    frame = clean_and_label(frame)
+    features = np.zeros((len(frame), len(FEATURE_COLUMNS)), dtype=np.float32)
+    features[:, 0] = np.array([-2.0, -1.0, 1.0, 2.0])
+    history = [{"epoch": 1.0, "train_loss": 0.7, "validation_loss": 0.8}]
+
+    metrics = save_evaluation_outputs(
+        FirstFeatureModel(),
+        features,
+        frame,
+        history,
+        tmp_path,
+        torch.device("cpu"),
+        bootstrap_samples=0,
+        slice_features=(),
+    )
+
+    assert "brier_reliability" in metrics
+    assert "area_under_risk_coverage" in metrics
+    assert (tmp_path / "brier_decomposition.json").exists()
+    assert (tmp_path / "selective_risk.json").exists()
 
 
 def test_threshold_search_selects_validation_cutoff() -> None:

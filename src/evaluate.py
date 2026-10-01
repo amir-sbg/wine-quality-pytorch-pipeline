@@ -577,13 +577,22 @@ def save_evaluation_outputs(
     predictions = (probabilities >= threshold).astype(int)
     metrics = classification_metrics(labels, probabilities, threshold)
     calibration = calibration_table(labels, probabilities)
+    decomposition = brier_decomposition(labels, probabilities)
+    selective_risk = selective_risk_report(labels, probabilities)
     operating_points = operating_point_report(labels, probabilities)
     metrics["best_operating_threshold_f1"] = operating_points["best_by_f1"]["threshold"]
     metrics["best_operating_threshold_balanced_accuracy"] = operating_points[
         "best_by_balanced_accuracy"
     ]["threshold"]
+    metrics["brier_reliability"] = decomposition["reliability"]
+    metrics["brier_resolution"] = decomposition["resolution"]
+    metrics["area_under_risk_coverage"] = selective_risk[
+        "area_under_risk_coverage"
+    ]
     _save_json(metrics, output_dir / "metrics.json")
     _save_json(calibration, output_dir / "calibration.json")
+    _save_json(decomposition, output_dir / "brier_decomposition.json")
+    _save_json(selective_risk, output_dir / "selective_risk.json")
     _save_json(operating_points, output_dir / "operating_points.json")
     if bootstrap_samples > 0:
         intervals = bootstrap_metric_intervals(

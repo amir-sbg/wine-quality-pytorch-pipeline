@@ -8,7 +8,7 @@ The project follows the full modeling path: schema checks, cleaning, a stratifie
 
 The model is a small `TabularMLP` with 64/32 ReLU layers and dropout. Training uses Adam, class-weighted `BCEWithLogitsLoss`, gradient clipping, and validation-based early stopping.
 
-Evaluation includes accuracy, precision, recall, F1, balanced accuracy, specificity, ROC-AUC, average precision, Matthews correlation, Brier score, calibration, bootstrap intervals, threshold operating points, feature slices, and permutation importance. The saved predictions and reports make it possible to inspect mistakes instead of relying on one aggregate score.
+Evaluation includes accuracy, precision, recall, F1, balanced accuracy, specificity, ROC-AUC, average precision, Matthews correlation, log loss, calibration, Brier decomposition, bootstrap intervals, selective risk, threshold operating points, feature slices, and permutation importance. Split diagnostics also report standardized mean shifts and population stability index (PSI). The saved predictions and reports make it possible to inspect mistakes instead of relying on one aggregate score.
 
 ## Setup
 
@@ -57,8 +57,10 @@ reports/
 ├── data_quality.json
 ├── metrics.json
 ├── test_predictions.csv
-├── calibration.json
-├── operating_points.json
+    ├── calibration.json
+    ├── brier_decomposition.json
+    ├── selective_risk.json
+    ├── operating_points.json
 ├── threshold_search.json
 ├── slice_metrics.json
 ├── permutation_importance.json
