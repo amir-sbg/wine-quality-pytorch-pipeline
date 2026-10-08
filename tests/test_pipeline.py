@@ -15,6 +15,7 @@ from src.evaluate import (
     bootstrap_metric_intervals,
     calibration_table,
     classification_metrics,
+    decision_curve_report,
     feature_slice_metrics,
     operating_point_report,
     permutation_importance,
@@ -327,8 +328,10 @@ def test_evaluation_outputs_include_probability_diagnostics(tmp_path) -> None:
 
     assert "brier_reliability" in metrics
     assert "area_under_risk_coverage" in metrics
+    assert "decision_curve_best_threshold" in metrics
     assert (tmp_path / "brier_decomposition.json").exists()
     assert (tmp_path / "selective_risk.json").exists()
+    assert (tmp_path / "decision_curve.json").exists()
 
 
 def test_threshold_search_selects_validation_cutoff() -> None:
@@ -353,6 +356,19 @@ def test_operating_point_report_tracks_confusion_counts() -> None:
     assert first["false_positive"] == 1
     assert first["true_positive"] == 2
     assert report["best_by_f1"]["threshold"] == 0.5
+
+
+def test_decision_curve_reports_net_benefit_against_defaults() -> None:
+    report = decision_curve_report(
+        labels=np.array([0, 0, 1, 1]),
+        probabilities=np.array([0.10, 0.60, 0.70, 0.90]),
+        thresholds=(0.50, 0.80),
+    )
+
+    first = report["points"][0]
+    assert first["model_net_benefit"] == pytest.approx(0.25)
+    assert first["treat_all_net_benefit"] == pytest.approx(0.0)
+    assert report["best_net_benefit_vs_default"] == pytest.approx(0.25)
 
 
 def test_bootstrap_metric_intervals_report_uncertainty() -> None:

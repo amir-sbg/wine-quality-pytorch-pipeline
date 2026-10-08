@@ -316,6 +316,60 @@ def operating_point_report(
     }
 
 
+def decision_curve_report(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    thresholds: tuple[float, ...] = (
+        0.10,
+        0.20,
+        0.30,
+        0.40,
+        0.50,
+        0.60,
+        0.70,
+        0.80,
+        0.90,
+    ),
+) -> dict[str, float | int | list[dict[str, float]]]:
+    """Compare model net benefit with treat-all and treat-none policies."""
+
+    labels = np.asarray(labels, dtype=int)
+    probabilities = np.asarray(probabilities, dtype=float)
+    classification_metrics(labels, probabilities)
+    if not thresholds or any(not 0.0 < threshold < 1.0 for threshold in thresholds):
+        raise ValueError("decision thresholds must be in (0, 1)")
+
+    rows = []
+    prevalence = float(labels.mean())
+    sample_count = len(labels)
+    for threshold in thresholds:
+        predictions = probabilities >= threshold
+        true_positive = int(np.sum(predictions & (labels == 1)))
+        false_positive = int(np.sum(predictions & (labels == 0)))
+        odds = threshold / (1.0 - threshold)
+        model_net_benefit = true_positive / sample_count - false_positive / sample_count * odds
+        treat_all_net_benefit = prevalence - (1.0 - prevalence) * odds
+        rows.append(
+            {
+                "threshold": float(threshold),
+                "model_net_benefit": float(model_net_benefit),
+                "treat_all_net_benefit": float(treat_all_net_benefit),
+                "treat_none_net_benefit": 0.0,
+                "net_benefit_vs_best_default": float(
+                    model_net_benefit - max(treat_all_net_benefit, 0.0)
+                ),
+            }
+        )
+    best = max(rows, key=lambda row: row["net_benefit_vs_best_default"])
+    return {
+        "n_samples": sample_count,
+        "prevalence": prevalence,
+        "best_threshold": best["threshold"],
+        "best_net_benefit_vs_default": best["net_benefit_vs_best_default"],
+        "points": rows,
+    }
+
+
 def bootstrap_metric_intervals(
     labels: np.ndarray,
     probabilities: np.ndarray,
@@ -580,6 +634,7 @@ def save_evaluation_outputs(
     decomposition = brier_decomposition(labels, probabilities)
     selective_risk = selective_risk_report(labels, probabilities)
     operating_points = operating_point_report(labels, probabilities)
+    decision_curve = decision_curve_report(labels, probabilities)
     metrics["best_operating_threshold_f1"] = operating_points["best_by_f1"]["threshold"]
     metrics["best_operating_threshold_balanced_accuracy"] = operating_points[
         "best_by_balanced_accuracy"
@@ -589,11 +644,16 @@ def save_evaluation_outputs(
     metrics["area_under_risk_coverage"] = selective_risk[
         "area_under_risk_coverage"
     ]
+    metrics["decision_curve_best_threshold"] = decision_curve["best_threshold"]
+    metrics["decision_curve_best_net_benefit_vs_default"] = decision_curve[
+        "best_net_benefit_vs_default"
+    ]
     _save_json(metrics, output_dir / "metrics.json")
     _save_json(calibration, output_dir / "calibration.json")
     _save_json(decomposition, output_dir / "brier_decomposition.json")
     _save_json(selective_risk, output_dir / "selective_risk.json")
     _save_json(operating_points, output_dir / "operating_points.json")
+    _save_json(decision_curve, output_dir / "decision_curve.json")
     if bootstrap_samples > 0:
         intervals = bootstrap_metric_intervals(
             labels,
