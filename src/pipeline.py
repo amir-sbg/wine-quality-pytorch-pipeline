@@ -57,6 +57,8 @@ def validate_runtime_args(args: argparse.Namespace) -> None:
         raise ValueError("permutation_importance_repeats must not be negative")
     if args.bootstrap_samples < 0:
         raise ValueError("bootstrap_samples must not be negative")
+    if args.robustness_repeats < 0:
+        raise ValueError("robustness_repeats must not be negative")
     if args.quality_threshold < 0:
         raise ValueError("quality_threshold must not be negative")
     missing_slice_features = sorted(set(args.slice_features).difference(FEATURE_COLUMNS))
@@ -287,6 +289,7 @@ def run(args: argparse.Namespace) -> dict:
         seed=args.seed,
         slice_features=tuple(args.slice_features),
         slice_bins=args.slice_bins,
+        robustness_repeats=args.robustness_repeats,
     )
     importance_report = None
     if args.permutation_importance_repeats > 0:
@@ -368,6 +371,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tune-threshold", action="store_true")
     parser.add_argument("--permutation-importance-repeats", type=int, default=5)
     parser.add_argument("--bootstrap-samples", type=int, default=250)
+    parser.add_argument("--robustness-repeats", type=int, default=5)
     parser.add_argument(
         "--slice-features",
         nargs="*",

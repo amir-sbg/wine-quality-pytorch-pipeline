@@ -659,6 +659,72 @@ def permutation_importance(
     }
 
 
+def input_noise_robustness(
+    model: nn.Module,
+    features: np.ndarray,
+    labels: np.ndarray,
+    device: torch.device,
+    threshold: float = 0.5,
+    noise_scales: tuple[float, ...] = (0.05, 0.10, 0.25),
+    repeats: int = 5,
+    seed: int = 42,
+) -> dict[str, float | int | list[dict[str, float]]]:
+    """Stress-test standardized features with small Gaussian perturbations."""
+
+    if repeats < 1:
+        raise ValueError("repeats must be at least 1")
+    if not noise_scales or any(scale <= 0 for scale in noise_scales):
+        raise ValueError("noise scales must be positive")
+    features = np.asarray(features, dtype=np.float32)
+    labels = np.asarray(labels, dtype=int)
+    if features.ndim != 2 or features.shape[0] != len(labels):
+        raise ValueError("features must be a matrix with one row per label")
+
+    clean_probabilities = predict_probabilities(model, features, device)
+    clean_predictions = clean_probabilities >= threshold
+    clean_metrics = classification_metrics(labels, clean_probabilities, threshold)
+    generator = np.random.default_rng(seed)
+    points = []
+    for scale in noise_scales:
+        shifts = []
+        flips = []
+        metric_values = []
+        for _ in range(repeats):
+            noisy_features = features + generator.normal(
+                loc=0.0,
+                scale=scale,
+                size=features.shape,
+            ).astype(np.float32)
+            noisy_probabilities = predict_probabilities(model, noisy_features, device)
+            shifts.extend(np.abs(noisy_probabilities - clean_probabilities))
+            flips.append(float(np.mean((noisy_probabilities >= threshold) != clean_predictions)))
+            metric_values.append(
+                float(classification_metrics(labels, noisy_probabilities, threshold)["f1"])
+            )
+        points.append(
+            {
+                "noise_scale": float(scale),
+                "mean_absolute_probability_shift": float(np.mean(shifts)),
+                "p95_absolute_probability_shift": float(np.quantile(shifts, 0.95)),
+                "prediction_flip_rate": float(np.mean(flips)),
+                "mean_f1": float(np.mean(metric_values)),
+                "f1_drop": float(clean_metrics["f1"] - np.mean(metric_values)),
+            }
+        )
+
+    return {
+        "repeats": repeats,
+        "clean_f1": float(clean_metrics["f1"]),
+        "max_prediction_flip_rate": float(
+            max(point["prediction_flip_rate"] for point in points)
+        ),
+        "max_mean_probability_shift": float(
+            max(point["mean_absolute_probability_shift"] for point in points)
+        ),
+        "points": points,
+    }
+
+
 def _save_json(value: dict, path: Path) -> None:
     path.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n")
 
@@ -708,6 +774,7 @@ def save_evaluation_outputs(
     seed: int = 42,
     slice_features: tuple[str, ...] = ("alcohol", "volatile acidity", "sulphates"),
     slice_bins: int = 3,
+    robustness_repeats: int = 5,
 ) -> dict[str, float | int | None]:
     output_dir.mkdir(parents=True, exist_ok=True)
     labels = test_frame["good_quality"].to_numpy(dtype=int)
@@ -720,6 +787,17 @@ def save_evaluation_outputs(
     selective_risk = selective_risk_report(labels, probabilities)
     operating_points = operating_point_report(labels, probabilities)
     decision_curve = decision_curve_report(labels, probabilities)
+    robustness = None
+    if robustness_repeats > 0:
+        robustness = input_noise_robustness(
+            model,
+            test_features,
+            labels,
+            device,
+            threshold=threshold,
+            repeats=robustness_repeats,
+            seed=seed + 29,
+        )
     metrics["best_operating_threshold_f1"] = operating_points["best_by_f1"]["threshold"]
     metrics["best_operating_threshold_balanced_accuracy"] = operating_points[
         "best_by_balanced_accuracy"
@@ -735,6 +813,13 @@ def save_evaluation_outputs(
     ]
     metrics["calibration_intercept"] = calibration_slope["calibration_intercept"]
     metrics["calibration_slope"] = calibration_slope["calibration_slope"]
+    if robustness is not None:
+        metrics["max_noise_prediction_flip_rate"] = robustness[
+            "max_prediction_flip_rate"
+        ]
+        metrics["max_noise_probability_shift"] = robustness[
+            "max_mean_probability_shift"
+        ]
     _save_json(metrics, output_dir / "metrics.json")
     _save_json(calibration, output_dir / "calibration.json")
     _save_json(calibration_slope, output_dir / "calibration_slope.json")
@@ -742,6 +827,8 @@ def save_evaluation_outputs(
     _save_json(selective_risk, output_dir / "selective_risk.json")
     _save_json(operating_points, output_dir / "operating_points.json")
     _save_json(decision_curve, output_dir / "decision_curve.json")
+    if robustness is not None:
+        _save_json(robustness, output_dir / "input_robustness.json")
     if bootstrap_samples > 0:
         intervals = bootstrap_metric_intervals(
             labels,

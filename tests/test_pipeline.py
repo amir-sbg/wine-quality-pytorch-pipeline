@@ -19,6 +19,7 @@ from src.evaluate import (
     classification_metrics,
     decision_curve_report,
     feature_slice_metrics,
+    input_noise_robustness,
     operating_point_report,
     permutation_importance,
     save_evaluation_outputs,
@@ -163,6 +164,13 @@ def test_runtime_args_reject_negative_bootstrap_samples() -> None:
     args = build_parser().parse_args(["--bootstrap-samples", "-2"])
 
     with pytest.raises(ValueError, match="bootstrap_samples"):
+        validate_runtime_args(args)
+
+
+def test_runtime_args_reject_negative_robustness_repeats() -> None:
+    args = build_parser().parse_args(["--robustness-repeats", "-1"])
+
+    with pytest.raises(ValueError, match="robustness_repeats"):
         validate_runtime_args(args)
 
 
@@ -353,6 +361,7 @@ def test_evaluation_outputs_include_probability_diagnostics(tmp_path) -> None:
     assert (tmp_path / "calibration_slope.json").exists()
     assert (tmp_path / "selective_risk.json").exists()
     assert (tmp_path / "decision_curve.json").exists()
+    assert (tmp_path / "input_robustness.json").exists()
 
 
 def test_threshold_search_selects_validation_cutoff() -> None:
@@ -489,6 +498,32 @@ def test_permutation_importance_ranks_used_feature_first() -> None:
 
     assert report["features"][0]["feature"] == "signal"
     assert report["features"][0]["importance"] > report["features"][1]["importance"]
+
+
+def test_input_noise_robustness_is_seeded_and_reports_probability_drift() -> None:
+    class FirstFeatureModel(torch.nn.Module):
+        def forward(self, features: torch.Tensor) -> torch.Tensor:
+            return 3.0 * features[:, 0]
+
+    features = np.array(
+        [[-1.0, 0.0], [-0.5, 0.0], [0.5, 0.0], [1.0, 0.0]],
+        dtype=np.float32,
+    )
+    labels = np.array([0, 0, 1, 1])
+    report = input_noise_robustness(
+        FirstFeatureModel(),
+        features,
+        labels,
+        torch.device("cpu"),
+        noise_scales=(0.05, 0.20),
+        repeats=3,
+        seed=4,
+    )
+
+    assert report["repeats"] == 3
+    assert len(report["points"]) == 2
+    assert report["points"][1]["mean_absolute_probability_shift"] > 0
+    assert 0.0 <= report["max_prediction_flip_rate"] <= 1.0
 
 
 def test_model_returns_one_logit_per_row() -> None:
