@@ -14,6 +14,7 @@ from src.evaluate import (
     brier_decomposition,
     bootstrap_metric_intervals,
     calibration_table,
+    calibration_slope_report,
     classification_metrics,
     decision_curve_report,
     feature_slice_metrics,
@@ -261,6 +262,24 @@ def test_calibration_table_reports_bin_errors() -> None:
     assert len(report["table"]) == 2
 
 
+def test_calibration_slope_report_fits_logit_recalibration() -> None:
+    report = calibration_slope_report(
+        np.array([0, 0, 0, 1, 1, 1]),
+        np.array([0.10, 0.25, 0.40, 0.60, 0.75, 0.90]),
+    )
+
+    assert report["n_samples"] == 6
+    assert np.isfinite(report["calibration_intercept"])
+    assert report["calibration_slope"] > 0
+
+
+def test_calibration_slope_is_unavailable_for_one_class() -> None:
+    report = calibration_slope_report(np.array([1, 1]), np.array([0.7, 0.8]))
+
+    assert report["calibration_intercept"] is None
+    assert report["calibration_slope"] is None
+
+
 def test_brier_decomposition_separates_reliability_and_resolution() -> None:
     report = brier_decomposition(
         np.array([0, 0, 1, 1]),
@@ -330,6 +349,7 @@ def test_evaluation_outputs_include_probability_diagnostics(tmp_path) -> None:
     assert "area_under_risk_coverage" in metrics
     assert "decision_curve_best_threshold" in metrics
     assert (tmp_path / "brier_decomposition.json").exists()
+    assert (tmp_path / "calibration_slope.json").exists()
     assert (tmp_path / "selective_risk.json").exists()
     assert (tmp_path / "decision_curve.json").exists()
 

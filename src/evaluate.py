@@ -24,6 +24,7 @@ from sklearn.metrics import (
     roc_auc_score,
     roc_curve,
 )
+from sklearn.linear_model import LogisticRegression
 from torch import nn
 
 
@@ -150,6 +151,33 @@ def calibration_table(
         "brier_score": float(brier_score_loss(labels, probabilities)),
         "expected_calibration_error": float(expected_calibration_error),
         "table": rows,
+    }
+
+
+def calibration_slope_report(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+) -> dict[str, float | int | None]:
+    """Fit a logistic recalibration model; ideal intercept and slope are 0 and 1."""
+
+    labels = np.asarray(labels, dtype=int)
+    probabilities = np.asarray(probabilities, dtype=float)
+    classification_metrics(labels, probabilities)
+    if len(np.unique(labels)) < 2:
+        return {
+            "n_samples": int(len(labels)),
+            "calibration_intercept": None,
+            "calibration_slope": None,
+        }
+
+    clipped = np.clip(probabilities, 1e-6, 1.0 - 1e-6)
+    logits = np.log(clipped / (1.0 - clipped)).reshape(-1, 1)
+    recalibrator = LogisticRegression(C=1e6, solver="lbfgs")
+    recalibrator.fit(logits, labels)
+    return {
+        "n_samples": int(len(labels)),
+        "calibration_intercept": float(recalibrator.intercept_[0]),
+        "calibration_slope": float(recalibrator.coef_[0, 0]),
     }
 
 
@@ -631,6 +659,7 @@ def save_evaluation_outputs(
     predictions = (probabilities >= threshold).astype(int)
     metrics = classification_metrics(labels, probabilities, threshold)
     calibration = calibration_table(labels, probabilities)
+    calibration_slope = calibration_slope_report(labels, probabilities)
     decomposition = brier_decomposition(labels, probabilities)
     selective_risk = selective_risk_report(labels, probabilities)
     operating_points = operating_point_report(labels, probabilities)
@@ -648,8 +677,11 @@ def save_evaluation_outputs(
     metrics["decision_curve_best_net_benefit_vs_default"] = decision_curve[
         "best_net_benefit_vs_default"
     ]
+    metrics["calibration_intercept"] = calibration_slope["calibration_intercept"]
+    metrics["calibration_slope"] = calibration_slope["calibration_slope"]
     _save_json(metrics, output_dir / "metrics.json")
     _save_json(calibration, output_dir / "calibration.json")
+    _save_json(calibration_slope, output_dir / "calibration_slope.json")
     _save_json(decomposition, output_dir / "brier_decomposition.json")
     _save_json(selective_risk, output_dir / "selective_risk.json")
     _save_json(operating_points, output_dir / "operating_points.json")
