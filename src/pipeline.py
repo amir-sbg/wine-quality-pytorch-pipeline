@@ -22,6 +22,7 @@ from .data import (
     summarize_dataset,
 )
 from .evaluate import (
+    bootstrap_threshold_stability,
     permutation_importance,
     predict_probabilities,
     save_evaluation_outputs,
@@ -225,6 +226,7 @@ def run(args: argparse.Namespace) -> dict:
 
     selected_threshold = args.threshold
     threshold_report = None
+    threshold_stability = None
     if args.tune_threshold:
         validation_probabilities = predict_probabilities(
             model,
@@ -243,6 +245,18 @@ def run(args: argparse.Namespace) -> dict:
             args.threshold_metric,
             report_dir / "threshold_curve.png",
         )
+        if args.bootstrap_samples > 0:
+            threshold_stability = bootstrap_threshold_stability(
+                validation_labels.astype(int),
+                validation_probabilities,
+                metric=args.threshold_metric,
+                samples=args.bootstrap_samples,
+                seed=args.seed + 11,
+            )
+            save_json(
+                threshold_stability,
+                report_dir / "threshold_stability.json",
+            )
         status(
             f"Selected threshold {selected_threshold:.3f} "
             f"by validation {args.threshold_metric}",
@@ -319,6 +333,7 @@ def run(args: argparse.Namespace) -> dict:
         "requested_threshold": args.threshold,
         "selected_threshold": selected_threshold,
         "threshold_tuning": threshold_report,
+        "threshold_stability": threshold_stability,
         "permutation_importance": importance_report,
         "training": training_summary,
         "test_metrics": metrics,

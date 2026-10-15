@@ -2,7 +2,7 @@
 
 A reproducible tabular-classification pipeline for predicting whether a red wine receives a UCI quality score of at least 6 from 11 physicochemical measurements.
 
-The project follows the full modeling path: schema checks, cleaning, a stratified split, train-only standardization, PyTorch training, threshold selection, calibration, and held-out error analysis. The original `quality` score creates the `good_quality` label but is never included as an input feature.
+The project follows the full modeling path: schema checks, cleaning, a stratified split, train-only standardization, PyTorch training, threshold selection with bootstrap stability checks, calibration, and held-out error analysis. The original `quality` score creates the `good_quality` label but is never included as an input feature.
 
 ## Model and evaluation
 
@@ -64,6 +64,7 @@ reports/
     ├── decision_curve.json
     ├── operating_points.json
 ├── threshold_search.json
+├── threshold_stability.json
 ├── slice_metrics.json
 ├── permutation_importance.json
 └── model_card.md

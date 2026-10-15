@@ -297,6 +297,62 @@ def threshold_search(
     }
 
 
+def bootstrap_threshold_stability(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    metric: str = "f1",
+    steps: int = 181,
+    samples: int = 250,
+    seed: int = 42,
+) -> dict[str, float | int | str]:
+    """Measure how much the selected validation threshold moves under resampling."""
+
+    if samples < 1:
+        raise ValueError("samples must be at least 1")
+    labels = np.asarray(labels, dtype=int)
+    probabilities = np.asarray(probabilities, dtype=float)
+    classification_metrics(labels, probabilities)
+    generator = np.random.default_rng(seed)
+    thresholds = []
+    scores = []
+    skipped = 0
+    attempts = 0
+    while len(thresholds) < samples and attempts < samples * 20:
+        attempts += 1
+        indices = generator.integers(0, len(labels), size=len(labels))
+        if len(np.unique(labels[indices])) < 2:
+            skipped += 1
+            continue
+        result = threshold_search(
+            labels[indices],
+            probabilities[indices],
+            metric=metric,
+            steps=steps,
+        )
+        thresholds.append(float(result["best_threshold"]))
+        scores.append(float(result["best_score"]))
+
+    if not thresholds:
+        raise ValueError("could not draw a threshold bootstrap sample with both labels")
+    values = np.asarray(thresholds)
+    grid_low, grid_high = 0.05, 0.95
+    return {
+        "metric": metric,
+        "samples": samples,
+        "used_samples": len(thresholds),
+        "skipped_degenerate_samples": skipped,
+        "median_threshold": float(np.median(values)),
+        "mean_threshold": float(values.mean()),
+        "threshold_std": float(values.std(ddof=0)),
+        "threshold_q10": float(np.quantile(values, 0.10)),
+        "threshold_q90": float(np.quantile(values, 0.90)),
+        "boundary_selection_rate": float(
+            np.mean(np.isclose(values, grid_low) | np.isclose(values, grid_high))
+        ),
+        "mean_bootstrap_score": float(np.mean(scores)),
+    }
+
+
 def operating_point_report(
     labels: np.ndarray,
     probabilities: np.ndarray,

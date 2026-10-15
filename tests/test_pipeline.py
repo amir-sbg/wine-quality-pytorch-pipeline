@@ -11,6 +11,7 @@ from src.data import (
     validate_schema,
 )
 from src.evaluate import (
+    bootstrap_threshold_stability,
     brier_decomposition,
     bootstrap_metric_intervals,
     calibration_table,
@@ -362,6 +363,22 @@ def test_threshold_search_selects_validation_cutoff() -> None:
     assert result["metric"] == "f1"
     assert 0.40 < result["best_threshold"] <= 0.60
     assert result["best_score"] == 1.0
+
+
+def test_threshold_bootstrap_reports_selection_stability() -> None:
+    report = bootstrap_threshold_stability(
+        labels=np.array([0, 0, 0, 1, 1, 1]),
+        probabilities=np.array([0.10, 0.25, 0.40, 0.60, 0.75, 0.90]),
+        metric="f1",
+        steps=19,
+        samples=30,
+        seed=5,
+    )
+
+    assert report["used_samples"] == 30
+    assert 0.05 <= report["threshold_q10"] <= report["threshold_q90"] <= 0.95
+    assert report["threshold_std"] >= 0.0
+    assert 0.0 <= report["boundary_selection_rate"] <= 1.0
 
 
 def test_operating_point_report_tracks_confusion_counts() -> None:
