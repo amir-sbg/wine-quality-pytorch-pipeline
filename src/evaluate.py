@@ -725,6 +725,76 @@ def input_noise_robustness(
     }
 
 
+def mc_dropout_uncertainty(
+    model: nn.Module,
+    features: np.ndarray,
+    device: torch.device,
+    passes: int = 30,
+    seed: int = 42,
+) -> dict[str, float | int | list[dict[str, float]]]:
+    """Estimate predictive uncertainty while sampling the model's dropout masks."""
+
+    if passes < 2:
+        raise ValueError("passes must be at least 2")
+    features = np.asarray(features, dtype=np.float32)
+    if features.ndim != 2 or len(features) == 0:
+        raise ValueError("features must be a non-empty two-dimensional matrix")
+    if not np.isfinite(features).all():
+        raise ValueError("features must be finite")
+
+    module_states = {module: module.training for module in model.modules()}
+    tensor = torch.from_numpy(features).float().to(device)
+    samples = []
+    try:
+        model.eval()
+        for module in model.modules():
+            if isinstance(module, nn.Dropout):
+                module.train()
+        with torch.random.fork_rng():
+            torch.manual_seed(seed)
+            with torch.inference_mode():
+                for _ in range(passes):
+                    samples.append(torch.sigmoid(model(tensor)).cpu().numpy())
+    finally:
+        for module, was_training in module_states.items():
+            module.train(was_training)
+
+    draws = np.stack(samples, axis=0)
+    mean_probability = draws.mean(axis=0)
+    probability_variance = draws.var(axis=0)
+    clipped_draws = np.clip(draws, 1e-12, 1.0 - 1e-12)
+    expected_entropy = np.mean(
+        -(clipped_draws * np.log2(clipped_draws)
+          + (1.0 - clipped_draws) * np.log2(1.0 - clipped_draws)),
+        axis=0,
+    )
+    clipped_mean = np.clip(mean_probability, 1e-12, 1.0 - 1e-12)
+    predictive_entropy = -(
+        clipped_mean * np.log2(clipped_mean)
+        + (1.0 - clipped_mean) * np.log2(1.0 - clipped_mean)
+    )
+    mutual_information = np.maximum(predictive_entropy - expected_entropy, 0.0)
+    rows = [
+        {
+            "index": int(index),
+            "mean_probability": float(mean_probability[index]),
+            "probability_std": float(np.sqrt(probability_variance[index])),
+            "predictive_entropy_bits": float(predictive_entropy[index]),
+            "mutual_information_bits": float(mutual_information[index]),
+        }
+        for index in range(len(features))
+    ]
+    return {
+        "passes": passes,
+        "n_samples": int(len(features)),
+        "mean_probability_std": float(np.sqrt(probability_variance).mean()),
+        "p95_probability_std": float(np.quantile(np.sqrt(probability_variance), 0.95)),
+        "mean_predictive_entropy_bits": float(predictive_entropy.mean()),
+        "mean_mutual_information_bits": float(mutual_information.mean()),
+        "examples": rows,
+    }
+
+
 def _save_json(value: dict, path: Path) -> None:
     path.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n")
 
@@ -775,6 +845,7 @@ def save_evaluation_outputs(
     slice_features: tuple[str, ...] = ("alcohol", "volatile acidity", "sulphates"),
     slice_bins: int = 3,
     robustness_repeats: int = 5,
+    mc_dropout_passes: int = 30,
 ) -> dict[str, float | int | None]:
     output_dir.mkdir(parents=True, exist_ok=True)
     labels = test_frame["good_quality"].to_numpy(dtype=int)
@@ -798,6 +869,15 @@ def save_evaluation_outputs(
             repeats=robustness_repeats,
             seed=seed + 29,
         )
+    dropout_uncertainty = None
+    if mc_dropout_passes > 0:
+        dropout_uncertainty = mc_dropout_uncertainty(
+            model,
+            test_features,
+            device,
+            passes=mc_dropout_passes,
+            seed=seed + 41,
+        )
     metrics["best_operating_threshold_f1"] = operating_points["best_by_f1"]["threshold"]
     metrics["best_operating_threshold_balanced_accuracy"] = operating_points[
         "best_by_balanced_accuracy"
@@ -820,6 +900,13 @@ def save_evaluation_outputs(
         metrics["max_noise_probability_shift"] = robustness[
             "max_mean_probability_shift"
         ]
+    if dropout_uncertainty is not None:
+        metrics["mc_dropout_mean_probability_std"] = dropout_uncertainty[
+            "mean_probability_std"
+        ]
+        metrics["mc_dropout_mean_mutual_information_bits"] = dropout_uncertainty[
+            "mean_mutual_information_bits"
+        ]
     _save_json(metrics, output_dir / "metrics.json")
     _save_json(calibration, output_dir / "calibration.json")
     _save_json(calibration_slope, output_dir / "calibration_slope.json")
@@ -829,6 +916,8 @@ def save_evaluation_outputs(
     _save_json(decision_curve, output_dir / "decision_curve.json")
     if robustness is not None:
         _save_json(robustness, output_dir / "input_robustness.json")
+    if dropout_uncertainty is not None:
+        _save_json(dropout_uncertainty, output_dir / "mc_dropout_uncertainty.json")
     if bootstrap_samples > 0:
         intervals = bootstrap_metric_intervals(
             labels,

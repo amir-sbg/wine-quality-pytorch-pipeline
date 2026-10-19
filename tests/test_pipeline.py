@@ -20,6 +20,7 @@ from src.evaluate import (
     decision_curve_report,
     feature_slice_metrics,
     input_noise_robustness,
+    mc_dropout_uncertainty,
     operating_point_report,
     permutation_importance,
     save_evaluation_outputs,
@@ -171,6 +172,13 @@ def test_runtime_args_reject_negative_robustness_repeats() -> None:
     args = build_parser().parse_args(["--robustness-repeats", "-1"])
 
     with pytest.raises(ValueError, match="robustness_repeats"):
+        validate_runtime_args(args)
+
+
+def test_runtime_args_reject_single_mc_dropout_pass() -> None:
+    args = build_parser().parse_args(["--mc-dropout-passes", "1"])
+
+    with pytest.raises(ValueError, match="mc_dropout_passes"):
         validate_runtime_args(args)
 
 
@@ -352,6 +360,7 @@ def test_evaluation_outputs_include_probability_diagnostics(tmp_path) -> None:
         torch.device("cpu"),
         bootstrap_samples=0,
         slice_features=(),
+        mc_dropout_passes=3,
     )
 
     assert "brier_reliability" in metrics
@@ -362,6 +371,7 @@ def test_evaluation_outputs_include_probability_diagnostics(tmp_path) -> None:
     assert (tmp_path / "selective_risk.json").exists()
     assert (tmp_path / "decision_curve.json").exists()
     assert (tmp_path / "input_robustness.json").exists()
+    assert (tmp_path / "mc_dropout_uncertainty.json").exists()
 
 
 def test_threshold_search_selects_validation_cutoff() -> None:
@@ -524,6 +534,31 @@ def test_input_noise_robustness_is_seeded_and_reports_probability_drift() -> Non
     assert len(report["points"]) == 2
     assert report["points"][1]["mean_absolute_probability_shift"] > 0
     assert 0.0 <= report["max_prediction_flip_rate"] <= 1.0
+
+
+def test_mc_dropout_uncertainty_detects_stochastic_predictions() -> None:
+    model = torch.nn.Sequential(
+        torch.nn.Dropout(0.5),
+        torch.nn.Linear(2, 1, bias=False),
+        torch.nn.Flatten(0),
+    )
+    with torch.no_grad():
+        model[1].weight.copy_(torch.tensor([[2.0, -1.0]]))
+    model.eval()
+    features = np.array([[1.0, 0.5], [0.5, -1.0]], dtype=np.float32)
+
+    report = mc_dropout_uncertainty(
+        model,
+        features,
+        torch.device("cpu"),
+        passes=20,
+        seed=7,
+    )
+
+    assert report["passes"] == 20
+    assert report["mean_probability_std"] > 0
+    assert report["mean_mutual_information_bits"] > 0
+    assert model.training is False
 
 
 def test_model_returns_one_logit_per_row() -> None:

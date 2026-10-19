@@ -8,7 +8,7 @@ The project follows the full modeling path: schema checks, cleaning, a stratifie
 
 The model is a small `TabularMLP` with 64/32 ReLU layers and dropout. Training uses Adam, class-weighted `BCEWithLogitsLoss`, gradient clipping, and validation-based early stopping.
 
-Evaluation includes accuracy, precision, recall, F1, balanced accuracy, specificity, ROC-AUC, average precision, Matthews correlation, log loss, calibration slope/intercept, Brier decomposition, bootstrap intervals, selective risk, decision-curve net benefit, threshold operating points, feature slices, permutation importance, and Gaussian input-noise stress tests. Split diagnostics also report standardized mean shifts and population stability index (PSI). The saved predictions and reports make it possible to inspect mistakes instead of relying on one aggregate score.
+Evaluation includes accuracy, precision, recall, F1, balanced accuracy, specificity, ROC-AUC, average precision, Matthews correlation, log loss, calibration slope/intercept, Brier decomposition, bootstrap intervals, selective risk, decision-curve net benefit, threshold operating points, feature slices, permutation importance, Gaussian input-noise stress tests, and Monte Carlo dropout uncertainty. Split diagnostics also report standardized mean shifts and population stability index (PSI). The saved predictions and reports make it possible to inspect mistakes instead of relying on one aggregate score.
 
 ## Setup
 
@@ -37,6 +37,7 @@ python -m src.pipeline \
   --tune-threshold \
   --bootstrap-samples 250 \
   --robustness-repeats 5 \
+  --mc-dropout-passes 30 \
   --slice-features alcohol "volatile acidity" sulphates \
   --permutation-importance-repeats 5 \
   --seed 42 \
@@ -64,6 +65,7 @@ reports/
     ├── selective_risk.json
     ├── decision_curve.json
     ├── input_robustness.json
+    ├── mc_dropout_uncertainty.json
     ├── operating_points.json
 ├── threshold_search.json
 ├── threshold_stability.json
