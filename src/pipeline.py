@@ -293,6 +293,7 @@ def run(args: argparse.Namespace) -> dict:
         slice_bins=args.slice_bins,
         robustness_repeats=args.robustness_repeats,
         mc_dropout_passes=args.mc_dropout_passes,
+        feature_names=tuple(FEATURE_COLUMNS),
     )
     importance_report = None
     if args.permutation_importance_repeats > 0:

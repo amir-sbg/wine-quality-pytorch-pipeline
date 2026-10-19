@@ -20,6 +20,7 @@ from src.evaluate import (
     decision_curve_report,
     feature_slice_metrics,
     input_noise_robustness,
+    input_gradient_importance,
     mc_dropout_uncertainty,
     operating_point_report,
     permutation_importance,
@@ -361,6 +362,7 @@ def test_evaluation_outputs_include_probability_diagnostics(tmp_path) -> None:
         bootstrap_samples=0,
         slice_features=(),
         mc_dropout_passes=3,
+        feature_names=tuple(FEATURE_COLUMNS),
     )
 
     assert "brier_reliability" in metrics
@@ -372,6 +374,7 @@ def test_evaluation_outputs_include_probability_diagnostics(tmp_path) -> None:
     assert (tmp_path / "decision_curve.json").exists()
     assert (tmp_path / "input_robustness.json").exists()
     assert (tmp_path / "mc_dropout_uncertainty.json").exists()
+    assert (tmp_path / "gradient_importance.json").exists()
 
 
 def test_threshold_search_selects_validation_cutoff() -> None:
@@ -559,6 +562,27 @@ def test_mc_dropout_uncertainty_detects_stochastic_predictions() -> None:
     assert report["mean_probability_std"] > 0
     assert report["mean_mutual_information_bits"] > 0
     assert model.training is False
+
+
+def test_input_gradients_rank_the_active_feature_first() -> None:
+    class WeightedFeatureModel(torch.nn.Module):
+        def forward(self, features: torch.Tensor) -> torch.Tensor:
+            return 4.0 * features[:, 0] + 0.25 * features[:, 1]
+
+    features = np.array(
+        [[-0.2, 0.1], [0.0, -0.5], [0.2, 0.3]],
+        dtype=np.float32,
+    )
+    report = input_gradient_importance(
+        WeightedFeatureModel(),
+        features,
+        ["signal", "secondary"],
+        torch.device("cpu"),
+    )
+
+    assert report["features"][0]["feature"] == "signal"
+    assert report["features"][0]["relative_sensitivity"] > 0.9
+    assert sum(row["relative_sensitivity"] for row in report["features"]) == pytest.approx(1.0)
 
 
 def test_model_returns_one_logit_per_row() -> None:

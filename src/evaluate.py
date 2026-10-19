@@ -795,6 +795,54 @@ def mc_dropout_uncertainty(
     }
 
 
+def input_gradient_importance(
+    model: nn.Module,
+    features: np.ndarray,
+    feature_names: list[str] | tuple[str, ...],
+    device: torch.device,
+) -> dict[str, int | list[dict[str, float | str]]]:
+    """Summarize local probability sensitivity in standardized feature space."""
+
+    features = np.asarray(features, dtype=np.float32)
+    if features.ndim != 2 or len(features) == 0:
+        raise ValueError("features must be a non-empty two-dimensional matrix")
+    if features.shape[1] != len(feature_names):
+        raise ValueError("feature_names must match the number of feature columns")
+    if not np.isfinite(features).all():
+        raise ValueError("features must be finite")
+
+    was_training = model.training
+    model.eval()
+    tensor = torch.from_numpy(features).float().to(device).requires_grad_(True)
+    model.zero_grad(set_to_none=True)
+    probabilities = torch.sigmoid(model(tensor))
+    probabilities.sum().backward()
+    gradients = tensor.grad.detach().cpu().numpy()
+    model.train(was_training)
+
+    mean_absolute_gradient = np.mean(np.abs(gradients), axis=0)
+    mean_gradient_x_input = np.mean(np.abs(gradients * features), axis=0)
+    signed_mean_gradient = np.mean(gradients, axis=0)
+    total = float(mean_absolute_gradient.sum())
+    rows = [
+        {
+            "feature": str(name),
+            "mean_absolute_gradient": float(mean_absolute_gradient[index]),
+            "mean_absolute_gradient_x_input": float(mean_gradient_x_input[index]),
+            "signed_mean_gradient": float(signed_mean_gradient[index]),
+            "relative_sensitivity": float(
+                mean_absolute_gradient[index] / total if total else 0.0
+            ),
+        }
+        for index, name in enumerate(feature_names)
+    ]
+    rows.sort(key=lambda row: row["mean_absolute_gradient"], reverse=True)
+    return {
+        "n_samples": int(len(features)),
+        "features": rows,
+    }
+
+
 def _save_json(value: dict, path: Path) -> None:
     path.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n")
 
@@ -846,6 +894,7 @@ def save_evaluation_outputs(
     slice_bins: int = 3,
     robustness_repeats: int = 5,
     mc_dropout_passes: int = 30,
+    feature_names: tuple[str, ...] = (),
 ) -> dict[str, float | int | None]:
     output_dir.mkdir(parents=True, exist_ok=True)
     labels = test_frame["good_quality"].to_numpy(dtype=int)
@@ -878,6 +927,14 @@ def save_evaluation_outputs(
             passes=mc_dropout_passes,
             seed=seed + 41,
         )
+    gradient_importance = None
+    if feature_names:
+        gradient_importance = input_gradient_importance(
+            model,
+            test_features,
+            feature_names,
+            device,
+        )
     metrics["best_operating_threshold_f1"] = operating_points["best_by_f1"]["threshold"]
     metrics["best_operating_threshold_balanced_accuracy"] = operating_points[
         "best_by_balanced_accuracy"
@@ -907,6 +964,10 @@ def save_evaluation_outputs(
         metrics["mc_dropout_mean_mutual_information_bits"] = dropout_uncertainty[
             "mean_mutual_information_bits"
         ]
+    if gradient_importance is not None:
+        metrics["most_gradient_sensitive_feature"] = gradient_importance[
+            "features"
+        ][0]["feature"]
     _save_json(metrics, output_dir / "metrics.json")
     _save_json(calibration, output_dir / "calibration.json")
     _save_json(calibration_slope, output_dir / "calibration_slope.json")
@@ -918,6 +979,12 @@ def save_evaluation_outputs(
         _save_json(robustness, output_dir / "input_robustness.json")
     if dropout_uncertainty is not None:
         _save_json(dropout_uncertainty, output_dir / "mc_dropout_uncertainty.json")
+    if gradient_importance is not None:
+        _save_json(gradient_importance, output_dir / "gradient_importance.json")
+        pd.DataFrame(gradient_importance["features"]).to_csv(
+            output_dir / "gradient_importance.csv",
+            index=False,
+        )
     if bootstrap_samples > 0:
         intervals = bootstrap_metric_intervals(
             labels,
