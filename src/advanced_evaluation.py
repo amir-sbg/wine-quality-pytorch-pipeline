@@ -296,3 +296,51 @@ def bootstrap_calibration_interval(
         "lower_95": float(np.quantile(values, 0.025)),
         "upper_95": float(np.quantile(values, 0.975)),
     }
+
+
+def group_robustness_report(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    groups: np.ndarray,
+    threshold: float = 0.5,
+    min_group_size: int = 5,
+) -> dict[str, float | int | str | list[dict[str, float | int | str]]]:
+    """Report worst-group classification quality for a supplied partition."""
+
+    labels, probabilities = _binary_arrays(labels, probabilities)
+    groups = np.asarray(groups)
+    if groups.ndim != 1 or groups.shape != labels.shape:
+        raise ValueError("groups must be a vector aligned with labels")
+    if min_group_size < 1 or not 0.0 <= threshold <= 1.0:
+        raise ValueError("min_group_size and threshold are outside their valid ranges")
+
+    predictions = (probabilities >= threshold).astype(int)
+    rows = []
+    for group in np.unique(groups):
+        mask = groups == group
+        if int(mask.sum()) < min_group_size:
+            continue
+        true_positive = int(np.sum((predictions[mask] == 1) & (labels[mask] == 1)))
+        false_positive = int(np.sum((predictions[mask] == 1) & (labels[mask] == 0)))
+        false_negative = int(np.sum((predictions[mask] == 0) & (labels[mask] == 1)))
+        denominator = 2 * true_positive + false_positive + false_negative
+        rows.append(
+            {
+                "group": str(group),
+                "count": int(mask.sum()),
+                "positive_rate": float(labels[mask].mean()),
+                "accuracy": float(np.mean(predictions[mask] == labels[mask])),
+                "f1": float(2 * true_positive / denominator if denominator else 0.0),
+            }
+        )
+    if not rows:
+        raise ValueError("no groups meet min_group_size")
+    worst = min(rows, key=lambda row: row["accuracy"])
+    accuracies = [float(row["accuracy"]) for row in rows]
+    return {
+        "groups_evaluated": len(rows),
+        "worst_group": str(worst["group"]),
+        "worst_group_accuracy": float(worst["accuracy"]),
+        "accuracy_gap": float(max(accuracies) - min(accuracies)),
+        "groups": rows,
+    }

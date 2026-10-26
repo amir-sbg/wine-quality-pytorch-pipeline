@@ -10,6 +10,7 @@ from src.advanced_evaluation import (
     cost_sensitive_threshold,
     fit_temperature_scaling,
     fgsm_robustness_report,
+    group_robustness_report,
     mahalanobis_shift_report,
 )
 from src.data import (
@@ -343,6 +344,23 @@ def test_bootstrap_calibration_interval_is_seeded() -> None:
     assert first == second
     assert first["lower_95"] <= first["bootstrap_mean"] <= first["upper_95"]
     assert first["bootstrap_std"] >= 0.0
+
+
+def test_group_robustness_identifies_weak_partition() -> None:
+    labels = np.array([0, 0, 1, 1, 0, 0, 1, 1])
+    probabilities = np.array([0.1, 0.2, 0.8, 0.9, 0.8, 0.7, 0.2, 0.1])
+    groups = np.array(["stable"] * 4 + ["shifted"] * 4)
+
+    report = group_robustness_report(
+        labels,
+        probabilities,
+        groups,
+        min_group_size=4,
+    )
+
+    assert report["worst_group"] == "shifted"
+    assert report["worst_group_accuracy"] == 0.0
+    assert report["accuracy_gap"] == 1.0
 
 
 def test_metrics_reject_empty_inputs() -> None:
