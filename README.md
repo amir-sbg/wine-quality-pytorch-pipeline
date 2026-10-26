@@ -8,7 +8,7 @@ The project follows the full modeling path: schema checks, cleaning, a stratifie
 
 The model is a small `TabularMLP` with 64/32 ReLU layers and dropout. Training uses Adam, class-weighted `BCEWithLogitsLoss`, gradient clipping, and validation-based early stopping.
 
-Evaluation includes accuracy, precision, recall, F1, balanced accuracy, specificity, ROC-AUC, average precision, Matthews correlation, log loss, calibration slope/intercept, Brier decomposition, bootstrap intervals, selective risk, decision-curve net benefit, threshold operating points, feature slices, permutation importance, Gaussian input-noise stress tests, Monte Carlo dropout uncertainty, and input-gradient sensitivity. Split diagnostics also report standardized mean shifts and population stability index (PSI). The saved predictions and reports make it possible to inspect mistakes instead of relying on one aggregate score.
+Evaluation includes discrimination and calibration metrics, bootstrap intervals, selective risk, decision-curve net benefit, threshold operating points, feature slices, permutation importance, Monte Carlo dropout, and input-gradient sensitivity. A second reliability pass fits temperature scaling on validation data, constructs conformal prediction sets, checks cost-sensitive decisions, audits worst-group behavior, detects multivariate shift, and runs an FGSM input stress test. The saved predictions and reports make it possible to inspect mistakes instead of relying on one aggregate score.
 
 ## Setup
 
@@ -58,6 +58,7 @@ artifacts/
 reports/
 ├── data_quality.json
 ├── metrics.json
+├── advanced_evaluation.json
 ├── test_predictions.csv
     ├── calibration.json
     ├── calibration_slope.json
@@ -85,6 +86,7 @@ src/
 ├── model.py      PyTorch tabular model
 ├── train.py      loaders, loss, and early stopping
 ├── evaluate.py   metrics, plots, and error analysis
+├── advanced_evaluation.py  calibration, shift, and robustness checks
 └── pipeline.py   command-line workflow
 tests/
 ```

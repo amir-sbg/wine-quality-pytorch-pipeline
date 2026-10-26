@@ -10,6 +10,17 @@ import pandas as pd
 import torch
 from sklearn.preprocessing import StandardScaler
 
+from .advanced_evaluation import (
+    apply_temperature,
+    bootstrap_calibration_interval,
+    class_conditional_error_report,
+    conformal_prediction_sets,
+    cost_sensitive_threshold,
+    fgsm_robustness_report,
+    fit_temperature_scaling,
+    group_robustness_report,
+    mahalanobis_shift_report,
+)
 from .data import (
     DATA_URL,
     FEATURE_COLUMNS,
@@ -23,6 +34,7 @@ from .data import (
 )
 from .evaluate import (
     bootstrap_threshold_stability,
+    classification_metrics,
     permutation_importance,
     predict_probabilities,
     save_evaluation_outputs,
@@ -295,6 +307,85 @@ def run(args: argparse.Namespace) -> dict:
         mc_dropout_passes=args.mc_dropout_passes,
         feature_names=tuple(FEATURE_COLUMNS),
     )
+    validation_probabilities = predict_probabilities(
+        model,
+        validation_features,
+        device,
+    )
+    test_probabilities = predict_probabilities(model, test_features, device)
+    test_labels = test_frame["good_quality"].to_numpy(dtype=int)
+    validation_labels_int = validation_labels.astype(int)
+    temperature = fit_temperature_scaling(
+        validation_labels_int,
+        validation_probabilities,
+    )
+    calibrated_test_probabilities = apply_temperature(
+        test_probabilities,
+        temperature["temperature"],
+    )
+    alcohol_groups = pd.qcut(
+        test_frame["alcohol"],
+        q=4,
+        labels=["low", "mid-low", "mid-high", "high"],
+        duplicates="drop",
+    ).astype(str).to_numpy()
+    advanced_evaluation = {
+        "temperature_scaling": {
+            **temperature,
+            "test_metrics_after_scaling": classification_metrics(
+                test_labels,
+                calibrated_test_probabilities,
+                selected_threshold,
+            ),
+        },
+        "cost_sensitive_threshold": cost_sensitive_threshold(
+            validation_labels_int,
+            validation_probabilities,
+            false_positive_cost=1.0,
+            false_negative_cost=2.0,
+        ),
+        "conformal_prediction_sets": conformal_prediction_sets(
+            validation_labels_int,
+            validation_probabilities,
+            test_probabilities,
+            alpha=0.1,
+            test_labels=test_labels,
+        ),
+        "multivariate_shift": mahalanobis_shift_report(
+            train_features,
+            test_features,
+        ),
+        "fgsm_robustness": fgsm_robustness_report(
+            model,
+            test_features,
+            test_labels,
+            device,
+            threshold=selected_threshold,
+        ),
+        "calibration_interval": (
+            bootstrap_calibration_interval(
+                test_labels,
+                test_probabilities,
+                samples=args.bootstrap_samples,
+                seed=args.seed + 53,
+            )
+            if args.bootstrap_samples >= 2
+            else None
+        ),
+        "alcohol_group_robustness": group_robustness_report(
+            test_labels,
+            test_probabilities,
+            alcohol_groups,
+            threshold=selected_threshold,
+            min_group_size=3,
+        ),
+        "class_conditional_errors": class_conditional_error_report(
+            test_labels,
+            test_probabilities,
+            threshold=selected_threshold,
+        ),
+    }
+    save_json(advanced_evaluation, report_dir / "advanced_evaluation.json")
     importance_report = None
     if args.permutation_importance_repeats > 0:
         importance_report = permutation_importance(
@@ -342,6 +433,7 @@ def run(args: argparse.Namespace) -> dict:
         "threshold_tuning": threshold_report,
         "threshold_stability": threshold_stability,
         "permutation_importance": importance_report,
+        "advanced_evaluation": advanced_evaluation,
         "training": training_summary,
         "test_metrics": metrics,
     }
