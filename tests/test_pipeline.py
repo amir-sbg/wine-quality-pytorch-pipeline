@@ -5,6 +5,7 @@ import torch
 
 from src.advanced_evaluation import (
     apply_temperature,
+    bootstrap_calibration_interval,
     conformal_prediction_sets,
     cost_sensitive_threshold,
     fit_temperature_scaling,
@@ -330,6 +331,18 @@ def test_fgsm_report_tracks_adversarial_prediction_flips() -> None:
     assert report["epsilons"][0]["prediction_flip_rate"] == 0.0
     assert report["epsilons"][1]["prediction_flip_rate"] > 0.0
     assert report["epsilons"][1]["accuracy"] < report["epsilons"][0]["accuracy"]
+
+
+def test_bootstrap_calibration_interval_is_seeded() -> None:
+    labels = np.array([0, 0, 0, 1, 1, 1, 1, 0])
+    probabilities = np.array([0.1, 0.2, 0.4, 0.6, 0.8, 0.9, 0.7, 0.3])
+
+    first = bootstrap_calibration_interval(labels, probabilities, bins=4, samples=40, seed=9)
+    second = bootstrap_calibration_interval(labels, probabilities, bins=4, samples=40, seed=9)
+
+    assert first == second
+    assert first["lower_95"] <= first["bootstrap_mean"] <= first["upper_95"]
+    assert first["bootstrap_std"] >= 0.0
 
 
 def test_metrics_reject_empty_inputs() -> None:

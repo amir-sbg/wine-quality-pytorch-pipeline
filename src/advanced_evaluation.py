@@ -248,3 +248,51 @@ def fgsm_robustness_report(
             )
     model.train(was_training)
     return {"n_samples": int(len(features)), "epsilons": rows}
+
+
+def _expected_calibration_error(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    bins: int,
+) -> float:
+    edges = np.linspace(0.0, 1.0, bins + 1)
+    assignments = np.minimum(np.digitize(probabilities, edges[1:-1]), bins - 1)
+    error = 0.0
+    for index in range(bins):
+        mask = assignments == index
+        if np.any(mask):
+            error += float(mask.mean()) * abs(
+                float(labels[mask].mean()) - float(probabilities[mask].mean())
+            )
+    return error
+
+
+def bootstrap_calibration_interval(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    bins: int = 10,
+    samples: int = 500,
+    seed: int = 42,
+) -> dict[str, float | int]:
+    """Attach bootstrap uncertainty to expected calibration error."""
+
+    labels, probabilities = _binary_arrays(labels, probabilities)
+    if bins < 2 or samples < 2:
+        raise ValueError("bins and samples must both be at least 2")
+    rng = np.random.default_rng(seed)
+    values = []
+    for _ in range(samples):
+        indices = rng.integers(0, len(labels), size=len(labels))
+        values.append(
+            _expected_calibration_error(labels[indices], probabilities[indices], bins)
+        )
+    values = np.asarray(values)
+    return {
+        "bins": int(bins),
+        "bootstrap_samples": int(samples),
+        "expected_calibration_error": _expected_calibration_error(labels, probabilities, bins),
+        "bootstrap_mean": float(values.mean()),
+        "bootstrap_std": float(values.std()),
+        "lower_95": float(np.quantile(values, 0.025)),
+        "upper_95": float(np.quantile(values, 0.975)),
+    }
