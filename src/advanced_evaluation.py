@@ -94,3 +94,60 @@ def cost_sensitive_threshold(
         ):
             best = row
     return best
+
+
+def conformal_prediction_sets(
+    calibration_labels: np.ndarray,
+    calibration_probabilities: np.ndarray,
+    test_probabilities: np.ndarray,
+    alpha: float = 0.1,
+    test_labels: np.ndarray | None = None,
+) -> dict[str, float | int | list[int]]:
+    """Build finite-sample binary prediction sets from validation nonconformity."""
+
+    calibration_labels, calibration_probabilities = _binary_arrays(
+        calibration_labels,
+        calibration_probabilities,
+    )
+    test_probabilities = np.asarray(test_probabilities, dtype=np.float64)
+    if test_probabilities.ndim != 1 or len(test_probabilities) == 0:
+        raise ValueError("test_probabilities must be a non-empty vector")
+    if not np.all(np.isfinite(test_probabilities)) or np.any(
+        (test_probabilities < 0) | (test_probabilities > 1)
+    ):
+        raise ValueError("test_probabilities must be finite and between 0 and 1")
+    if not 0.0 < alpha < 1.0:
+        raise ValueError("alpha must be between 0 and 1")
+
+    calibration_true_probability = np.where(
+        calibration_labels == 1,
+        calibration_probabilities,
+        1.0 - calibration_probabilities,
+    )
+    scores = 1.0 - calibration_true_probability
+    quantile_level = min(1.0, np.ceil((len(scores) + 1) * (1.0 - alpha)) / len(scores))
+    threshold = float(np.quantile(scores, quantile_level, method="higher"))
+    include_zero = (1.0 - test_probabilities) >= 1.0 - threshold
+    include_one = test_probabilities >= 1.0 - threshold
+    empty = ~(include_zero | include_one)
+    include_zero = include_zero | (empty & (test_probabilities < 0.5))
+    include_one = include_one | (empty & (test_probabilities >= 0.5))
+    set_sizes = include_zero.astype(int) + include_one.astype(int)
+
+    report: dict[str, float | int | list[int]] = {
+        "alpha": float(alpha),
+        "nonconformity_threshold": threshold,
+        "average_set_size": float(set_sizes.mean()),
+        "argmax_fallbacks": int(empty.sum()),
+        "empty_sets": int(np.sum(set_sizes == 0)),
+        "singleton_sets": int(np.sum(set_sizes == 1)),
+        "doubleton_sets": int(np.sum(set_sizes == 2)),
+        "set_sizes": set_sizes.tolist(),
+    }
+    if test_labels is not None:
+        test_labels = np.asarray(test_labels, dtype=int)
+        if test_labels.shape != test_probabilities.shape or not set(np.unique(test_labels)).issubset({0, 1}):
+            raise ValueError("test_labels must be a binary vector aligned with test probabilities")
+        covered = np.where(test_labels == 1, include_one, include_zero)
+        report["empirical_coverage"] = float(covered.mean())
+    return report

@@ -5,6 +5,7 @@ import torch
 
 from src.advanced_evaluation import (
     apply_temperature,
+    conformal_prediction_sets,
     cost_sensitive_threshold,
     fit_temperature_scaling,
 )
@@ -275,6 +276,25 @@ def test_cost_sensitive_threshold_responds_to_false_negative_cost() -> None:
 
     assert recall_first["threshold"] <= balanced["threshold"]
     assert recall_first["false_negatives"] == 0
+
+
+def test_conformal_prediction_sets_report_coverage_and_size() -> None:
+    calibration_labels = np.array([0, 0, 0, 1, 1, 1, 1, 0, 1, 0])
+    calibration_probabilities = np.array([0.1, 0.2, 0.4, 0.6, 0.8, 0.9, 0.7, 0.3, 0.65, 0.25])
+    test_probabilities = np.array([0.05, 0.45, 0.95])
+    test_labels = np.array([0, 1, 1])
+
+    report = conformal_prediction_sets(
+        calibration_labels,
+        calibration_probabilities,
+        test_probabilities,
+        alpha=0.2,
+        test_labels=test_labels,
+    )
+
+    assert report["empty_sets"] == 0
+    assert 1.0 <= report["average_set_size"] <= 2.0
+    assert 0.0 <= report["empirical_coverage"] <= 1.0
 
 
 def test_metrics_reject_empty_inputs() -> None:
