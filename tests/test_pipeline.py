@@ -6,6 +6,7 @@ import torch
 from src.advanced_evaluation import (
     apply_temperature,
     bootstrap_calibration_interval,
+    class_conditional_error_report,
     conformal_prediction_sets,
     cost_sensitive_threshold,
     fit_temperature_scaling,
@@ -361,6 +362,17 @@ def test_group_robustness_identifies_weak_partition() -> None:
     assert report["worst_group"] == "shifted"
     assert report["worst_group_accuracy"] == 0.0
     assert report["accuracy_gap"] == 1.0
+
+
+def test_class_conditional_report_exposes_asymmetric_errors() -> None:
+    labels = np.array([0, 0, 0, 1, 1, 1])
+    probabilities = np.array([0.1, 0.2, 0.3, 0.2, 0.4, 0.9])
+
+    report = class_conditional_error_report(labels, probabilities)
+
+    assert report["classes"]["negative"]["error_rate"] == 0.0
+    assert report["classes"]["positive"]["error_rate"] == pytest.approx(2 / 3)
+    assert report["error_rate_gap"] == pytest.approx(2 / 3)
 
 
 def test_metrics_reject_empty_inputs() -> None:

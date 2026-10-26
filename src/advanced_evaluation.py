@@ -344,3 +344,37 @@ def group_robustness_report(
         "accuracy_gap": float(max(accuracies) - min(accuracies)),
         "groups": rows,
     }
+
+
+def class_conditional_error_report(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    threshold: float = 0.5,
+) -> dict[str, float | int | dict[str, float | int]]:
+    """Separate confidence and error behavior for low- and high-quality wines."""
+
+    labels, probabilities = _binary_arrays(labels, probabilities)
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError("threshold must be between 0 and 1")
+    predictions = (probabilities >= threshold).astype(int)
+    rows = {}
+    for class_value, name in ((0, "negative"), (1, "positive")):
+        mask = labels == class_value
+        if not np.any(mask):
+            rows[name] = {"count": 0, "error_rate": 0.0, "mean_true_class_probability": 0.0}
+            continue
+        true_class_probability = (
+            probabilities[mask] if class_value == 1 else 1.0 - probabilities[mask]
+        )
+        rows[name] = {
+            "count": int(mask.sum()),
+            "error_rate": float(np.mean(predictions[mask] != class_value)),
+            "mean_true_class_probability": float(true_class_probability.mean()),
+            "p10_true_class_probability": float(np.quantile(true_class_probability, 0.1)),
+            "brier_score": float(np.mean((probabilities[mask] - labels[mask]) ** 2)),
+        }
+    return {
+        "threshold": float(threshold),
+        "error_rate_gap": float(abs(rows["positive"]["error_rate"] - rows["negative"]["error_rate"])),
+        "classes": rows,
+    }
