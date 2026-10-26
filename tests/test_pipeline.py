@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 import torch
 
+from src.advanced_evaluation import apply_temperature, fit_temperature_scaling
 from src.data import (
     FEATURE_COLUMNS,
     clean_and_label,
@@ -242,6 +243,18 @@ def test_metrics_reject_invalid_threshold() -> None:
             np.array([0.2, 0.8]),
             threshold=1.5,
         )
+
+
+def test_temperature_scaling_softens_overconfident_probabilities() -> None:
+    labels = np.array([0, 0, 1, 1])
+    probabilities = np.array([0.01, 0.90, 0.10, 0.99])
+
+    report = fit_temperature_scaling(labels, probabilities)
+    calibrated = apply_temperature(probabilities, report["temperature"])
+
+    assert report["temperature"] > 1.0
+    assert report["log_loss_after"] < report["log_loss_before"]
+    assert np.abs(calibrated - 0.5).mean() < np.abs(probabilities - 0.5).mean()
 
 
 def test_metrics_reject_empty_inputs() -> None:
