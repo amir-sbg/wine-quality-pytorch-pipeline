@@ -8,6 +8,7 @@ from src.advanced_evaluation import (
     conformal_prediction_sets,
     cost_sensitive_threshold,
     fit_temperature_scaling,
+    fgsm_robustness_report,
     mahalanobis_shift_report,
 )
 from src.data import (
@@ -308,6 +309,27 @@ def test_mahalanobis_report_flags_shifted_rows() -> None:
     assert report["flagged_test_rows"] >= 2
     assert {row["index"] for row in report["top_test_rows"]} == {10, 11}
     assert report["test_mean_distance"] > report["train_mean_distance"]
+
+
+def test_fgsm_report_tracks_adversarial_prediction_flips() -> None:
+    model = torch.nn.Linear(1, 1)
+    with torch.no_grad():
+        model.weight.fill_(5.0)
+        model.bias.zero_()
+    features = np.array([[-0.2], [-0.05], [0.05], [0.2]], dtype=np.float32)
+    labels = np.array([0, 0, 1, 1])
+
+    report = fgsm_robustness_report(
+        model,
+        features,
+        labels,
+        torch.device("cpu"),
+        epsilons=(0.0, 0.2),
+    )
+
+    assert report["epsilons"][0]["prediction_flip_rate"] == 0.0
+    assert report["epsilons"][1]["prediction_flip_rate"] > 0.0
+    assert report["epsilons"][1]["accuracy"] < report["epsilons"][0]["accuracy"]
 
 
 def test_metrics_reject_empty_inputs() -> None:

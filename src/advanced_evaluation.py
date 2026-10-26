@@ -200,3 +200,51 @@ def mahalanobis_shift_report(
             for index in order
         ],
     }
+
+
+def fgsm_robustness_report(
+    model: nn.Module,
+    features: np.ndarray,
+    labels: np.ndarray,
+    device: torch.device,
+    epsilons: tuple[float, ...] = (0.0, 0.01, 0.05, 0.1),
+    threshold: float = 0.5,
+) -> dict[str, int | list[dict[str, float]]]:
+    """Stress standardized inputs in the direction that increases BCE loss."""
+
+    features = np.asarray(features, dtype=np.float32)
+    labels = np.asarray(labels, dtype=np.float32)
+    if features.ndim != 2 or labels.ndim != 1 or len(features) != len(labels):
+        raise ValueError("features and labels must be aligned matrix and vector inputs")
+    if not epsilons or any(value < 0.0 for value in epsilons):
+        raise ValueError("epsilons must contain non-negative values")
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError("threshold must be between 0 and 1")
+
+    was_training = model.training
+    model.eval()
+    x = torch.from_numpy(features).to(device).requires_grad_(True)
+    y = torch.from_numpy(labels).to(device)
+    logits = model(x).squeeze(-1)
+    loss = torch.nn.functional.binary_cross_entropy_with_logits(logits, y)
+    model.zero_grad(set_to_none=True)
+    loss.backward()
+    direction = x.grad.detach().sign()
+    with torch.no_grad():
+        baseline = torch.sigmoid(logits.detach()).cpu().numpy()
+        baseline_predictions = baseline >= threshold
+        rows = []
+        for epsilon in epsilons:
+            perturbed_logits = model(x.detach() + epsilon * direction).squeeze(-1)
+            probabilities = torch.sigmoid(perturbed_logits).cpu().numpy()
+            predictions = probabilities >= threshold
+            rows.append(
+                {
+                    "epsilon": float(epsilon),
+                    "accuracy": float(np.mean(predictions == labels)),
+                    "prediction_flip_rate": float(np.mean(predictions != baseline_predictions)),
+                    "mean_probability_shift": float(np.mean(np.abs(probabilities - baseline))),
+                }
+            )
+    model.train(was_training)
+    return {"n_samples": int(len(features)), "epsilons": rows}
