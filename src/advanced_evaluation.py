@@ -56,3 +56,41 @@ def fit_temperature_scaling(
         "log_loss_before": _binary_log_loss(labels, probabilities),
         "log_loss_after": float(losses[best]),
     }
+
+
+def cost_sensitive_threshold(
+    labels: np.ndarray,
+    probabilities: np.ndarray,
+    false_positive_cost: float = 1.0,
+    false_negative_cost: float = 1.0,
+    steps: int = 199,
+) -> dict[str, float | int]:
+    """Select a threshold from validation data for an explicit error-cost ratio."""
+
+    labels, probabilities = _binary_arrays(labels, probabilities)
+    if false_positive_cost < 0.0 or false_negative_cost < 0.0:
+        raise ValueError("misclassification costs must not be negative")
+    if false_positive_cost + false_negative_cost == 0.0:
+        raise ValueError("at least one misclassification cost must be positive")
+    if steps < 2:
+        raise ValueError("steps must be at least 2")
+
+    best = None
+    for threshold in np.linspace(0.005, 0.995, steps):
+        predictions = probabilities >= threshold
+        false_positives = int(np.sum((predictions == 1) & (labels == 0)))
+        false_negatives = int(np.sum((predictions == 0) & (labels == 1)))
+        total_cost = false_positive_cost * false_positives + false_negative_cost * false_negatives
+        row = {
+            "threshold": float(threshold),
+            "total_cost": float(total_cost),
+            "cost_per_sample": float(total_cost / len(labels)),
+            "false_positives": false_positives,
+            "false_negatives": false_negatives,
+        }
+        if best is None or (row["total_cost"], abs(threshold - 0.5)) < (
+            best["total_cost"],
+            abs(best["threshold"] - 0.5),
+        ):
+            best = row
+    return best

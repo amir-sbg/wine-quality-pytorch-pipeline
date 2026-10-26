@@ -3,7 +3,11 @@ import pandas as pd
 import pytest
 import torch
 
-from src.advanced_evaluation import apply_temperature, fit_temperature_scaling
+from src.advanced_evaluation import (
+    apply_temperature,
+    cost_sensitive_threshold,
+    fit_temperature_scaling,
+)
 from src.data import (
     FEATURE_COLUMNS,
     clean_and_label,
@@ -255,6 +259,22 @@ def test_temperature_scaling_softens_overconfident_probabilities() -> None:
     assert report["temperature"] > 1.0
     assert report["log_loss_after"] < report["log_loss_before"]
     assert np.abs(calibrated - 0.5).mean() < np.abs(probabilities - 0.5).mean()
+
+
+def test_cost_sensitive_threshold_responds_to_false_negative_cost() -> None:
+    labels = np.array([0, 0, 0, 1, 1, 1])
+    probabilities = np.array([0.1, 0.3, 0.55, 0.35, 0.6, 0.9])
+
+    balanced = cost_sensitive_threshold(labels, probabilities)
+    recall_first = cost_sensitive_threshold(
+        labels,
+        probabilities,
+        false_positive_cost=1.0,
+        false_negative_cost=5.0,
+    )
+
+    assert recall_first["threshold"] <= balanced["threshold"]
+    assert recall_first["false_negatives"] == 0
 
 
 def test_metrics_reject_empty_inputs() -> None:
