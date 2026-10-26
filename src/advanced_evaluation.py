@@ -151,3 +151,52 @@ def conformal_prediction_sets(
         covered = np.where(test_labels == 1, include_one, include_zero)
         report["empirical_coverage"] = float(covered.mean())
     return report
+
+
+def mahalanobis_shift_report(
+    train_features: np.ndarray,
+    test_features: np.ndarray,
+    quantile: float = 0.95,
+    shrinkage: float = 0.05,
+    top_k: int = 10,
+) -> dict[str, float | int | list[dict[str, float | int]]]:
+    """Flag test rows far from the multivariate training distribution."""
+
+    train_features = np.asarray(train_features, dtype=np.float64)
+    test_features = np.asarray(test_features, dtype=np.float64)
+    if train_features.ndim != 2 or test_features.ndim != 2:
+        raise ValueError("train_features and test_features must be matrices")
+    if train_features.shape[1] != test_features.shape[1] or len(train_features) < 2:
+        raise ValueError("train and test features must share columns and include training rows")
+    if not np.all(np.isfinite(train_features)) or not np.all(np.isfinite(test_features)):
+        raise ValueError("features must contain only finite values")
+    if not 0.0 < quantile < 1.0 or not 0.0 <= shrinkage <= 1.0 or top_k < 1:
+        raise ValueError("quantile, shrinkage, and top_k are outside their valid ranges")
+
+    mean = train_features.mean(axis=0)
+    covariance = np.cov(train_features, rowvar=False)
+    covariance = np.atleast_2d(covariance)
+    scale = float(np.trace(covariance) / covariance.shape[0])
+    regularized = (1.0 - shrinkage) * covariance + shrinkage * scale * np.eye(covariance.shape[0])
+    precision = np.linalg.pinv(regularized)
+
+    def distances(values: np.ndarray) -> np.ndarray:
+        centered = values - mean
+        return np.einsum("ij,jk,ik->i", centered, precision, centered)
+
+    train_scores = distances(train_features)
+    test_scores = distances(test_features)
+    threshold = float(np.quantile(train_scores, quantile))
+    order = np.argsort(-test_scores, kind="stable")[: min(top_k, len(test_scores))]
+    return {
+        "threshold_quantile": float(quantile),
+        "distance_threshold": threshold,
+        "train_mean_distance": float(train_scores.mean()),
+        "test_mean_distance": float(test_scores.mean()),
+        "flagged_test_rows": int(np.sum(test_scores > threshold)),
+        "flagged_test_rate": float(np.mean(test_scores > threshold)),
+        "top_test_rows": [
+            {"index": int(index), "squared_mahalanobis_distance": float(test_scores[index])}
+            for index in order
+        ],
+    }

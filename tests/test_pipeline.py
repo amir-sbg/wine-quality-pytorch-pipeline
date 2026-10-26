@@ -8,6 +8,7 @@ from src.advanced_evaluation import (
     conformal_prediction_sets,
     cost_sensitive_threshold,
     fit_temperature_scaling,
+    mahalanobis_shift_report,
 )
 from src.data import (
     FEATURE_COLUMNS,
@@ -295,6 +296,18 @@ def test_conformal_prediction_sets_report_coverage_and_size() -> None:
     assert report["empty_sets"] == 0
     assert 1.0 <= report["average_set_size"] <= 2.0
     assert 0.0 <= report["empirical_coverage"] <= 1.0
+
+
+def test_mahalanobis_report_flags_shifted_rows() -> None:
+    rng = np.random.default_rng(4)
+    train = rng.normal(size=(200, 3))
+    test = np.vstack([rng.normal(size=(10, 3)), np.full((2, 3), 7.0)])
+
+    report = mahalanobis_shift_report(train, test, top_k=2)
+
+    assert report["flagged_test_rows"] >= 2
+    assert {row["index"] for row in report["top_test_rows"]} == {10, 11}
+    assert report["test_mean_distance"] > report["train_mean_distance"]
 
 
 def test_metrics_reject_empty_inputs() -> None:
